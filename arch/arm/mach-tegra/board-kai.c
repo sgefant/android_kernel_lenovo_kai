@@ -172,9 +172,11 @@ static struct platform_device cardhu_bluesleep_device = {
 	.resource       = cardhu_bluesleep_resources,
 };
 
+extern void bluesleep_setup_uart_port(struct platform_device *uart_dev);
 static noinline void __init cardhu_setup_bluesleep(void)
 {
 	platform_device_register(&cardhu_bluesleep_device);
+	bluesleep_setup_uart_port(&tegra_uartc_device);
 	return;
 }
 
