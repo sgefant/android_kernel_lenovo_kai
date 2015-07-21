@@ -176,5 +176,6 @@ enum power_supply_type get_power_supply_type(void);
 enum audio_codec_type get_audio_codec_type(void);
 int get_maximum_cpu_current_supported(void);
 enum image_type get_tegra_image_type(void);
-
+int cl2n_get_board_strap(void);
+int tegra_get_hw_ramcode(void);
 #endif

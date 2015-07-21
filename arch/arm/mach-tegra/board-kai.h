@@ -45,11 +45,13 @@
 #define CAM2_RST_GPIO		TEGRA_GPIO_PBB4
 #define CAM2_POWER_DWN_GPIO	TEGRA_GPIO_PBB6
 /* Audio-related GPIOs */
-#define TEGRA_GPIO_CDC_IRQ		TEGRA_GPIO_PW3
+#define TEGRA_GPIO_CDC_IRQ		TEGRA_GPIO_PX3 /* FT2 */
 #define TEGRA_GPIO_SPKR_EN		-1
 #define TEGRA_GPIO_HP_DET		TEGRA_GPIO_PW2
-#define TEGRA_GPIO_INT_MIC_EN		TEGRA_GPIO_PK3
+#define TEGRA_GPIO_INT_MIC_EN		TEGRA_GPIO_PH1 /* FT2 */
 #define TEGRA_GPIO_EXT_MIC_EN		TEGRA_GPIO_PK4
+#define TEGRA_CODEC_GPIO_RESET		TEGRA_GPIO_PX2
+#define TEGRA_CODEC_SPI_CS		TEGRA_GPIO_PX6
 /* Tegra Modem related GPIOs */
 #define TEGRA_GPIO_W_DISABLE		TEGRA_GPIO_PDD7
 #define TEGRA_GPIO_MODEM_RSVD1		TEGRA_GPIO_PV0
@@ -81,6 +83,7 @@ int kai_pins_state_init(void);
 int kai_emc_init(void);
 int kai_edp_init(void);
 void __init kai_tsensor_init(void);
+int __init touch_init_raydium(int irq_gpio, int reset_gpio, int platform);
 int __init touch_init_synaptics_kai(void);
 
 #define TOUCH_GPIO_IRQ_RAYDIUM_SPI      TEGRA_GPIO_PZ3

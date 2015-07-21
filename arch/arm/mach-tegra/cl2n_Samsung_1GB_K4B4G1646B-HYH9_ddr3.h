@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2011-2012 NVIDIA, Inc.
+ * Copyright (C) 2011 NVIDIA, Inc.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -24,12 +24,8 @@
 #include "tegra3_emc.h"
 #include "fuse.h"
 
-#include "cl2n_Hynix_1GB_H5TC4G63MFR-H9A_ddr3.h"
-#include "cl2n_Elpida_1GB_EDJ4216EBBG-DJ-F_ddr3.h"
-#include "cl2n_Samsung_1GB_K4B4G1646B-HYH9_ddr3.h"
-
-/* Elpida_1GB_EDJ4216EBBG */
-static const struct tegra_emc_table kai_emc_tables_elpida_1gb_edj4216ebbg[] = {
+//FT2_DVT_Samsung_dvfs_table_0723_without_EACK.txt
+static const struct tegra_emc_table cl2n_dvt_emc_tables_Samsung_1GB_K4B4G1646B_HYH9_ddr3[] = {
 	{
 		0x32,       /* Rev 3.2 */
 		25500,      /* SDRAM frequency */
@@ -50,7 +46,7 @@ static const struct tegra_emc_table kai_emc_tables_elpida_1gb_edj4216ebbg[] = {
 			0x00000005, /* EMC_WDV */
 			0x00000005, /* EMC_QUSE */
 			0x00000004, /* EMC_QRST */
-			0x0000000a, /* EMC_QSAFE */
+			0x00000009, /* EMC_QSAFE */
 			0x0000000b, /* EMC_RDV */
 			0x000000c0, /* EMC_REFRESH */
 			0x00000000, /* EMC_BURST_REFRESH_NUM */
@@ -170,7 +166,7 @@ static const struct tegra_emc_table kai_emc_tables_elpida_1gb_edj4216ebbg[] = {
 			0x00000005, /* EMC_WDV */
 			0x00000005, /* EMC_QUSE */
 			0x00000004, /* EMC_QRST */
-			0x0000000a, /* EMC_QSAFE */
+			0x00000009, /* EMC_QSAFE */
 			0x0000000b, /* EMC_RDV */
 			0x00000181, /* EMC_REFRESH */
 			0x00000000, /* EMC_BURST_REFRESH_NUM */
@@ -290,7 +286,7 @@ static const struct tegra_emc_table kai_emc_tables_elpida_1gb_edj4216ebbg[] = {
 			0x00000005, /* EMC_WDV */
 			0x00000005, /* EMC_QUSE */
 			0x00000004, /* EMC_QRST */
-			0x0000000a, /* EMC_QSAFE */
+			0x00000009, /* EMC_QSAFE */
 			0x0000000b, /* EMC_RDV */
 			0x00000303, /* EMC_REFRESH */
 			0x00000000, /* EMC_BURST_REFRESH_NUM */
@@ -528,7 +524,7 @@ static const struct tegra_emc_table kai_emc_tables_elpida_1gb_edj4216ebbg[] = {
 			0x00000001, /* EMC_REXT */
 			0x00000000, /* EMC_WEXT */
 			0x00000004, /* EMC_WDV */
-			0x00000005, /* EMC_QUSE */
+			0x00000006, /* EMC_QUSE */
 			0x00000004, /* EMC_QRST */
 			0x0000000a, /* EMC_QSAFE */
 			0x0000000c, /* EMC_RDV */
@@ -550,7 +546,7 @@ static const struct tegra_emc_table kai_emc_tables_elpida_1gb_edj4216ebbg[] = {
 			0x00000005, /* EMC_TCLKSTOP */
 			0x00000a2a, /* EMC_TREFBW */
 			0x00000000, /* EMC_QUSE_EXTRA */
-			0x00000006, /* EMC_FBIO_CFG6 */
+			0x00000004, /* EMC_FBIO_CFG6 */
 			0x00000000, /* EMC_ODT_WRITE */
 			0x00000000, /* EMC_ODT_READ */
 			0x00007088, /* EMC_FBIO_CFG5 */
@@ -634,7 +630,7 @@ static const struct tegra_emc_table kai_emc_tables_elpida_1gb_edj4216ebbg[] = {
 		0x32,       /* Rev 3.2 */
 		667000,     /* SDRAM frequency */
 		{
-			0x0000001f, /* EMC_RC */
+			0x00000020, /* EMC_RC */
 			0x000000ac, /* EMC_RFC */
 			0x00000017, /* EMC_RAS */
 			0x00000007, /* EMC_RP */
@@ -676,14 +672,14 @@ static const struct tegra_emc_table kai_emc_tables_elpida_1gb_edj4216ebbg[] = {
 			0x00005088, /* EMC_FBIO_CFG5 */
 			0xf00b0191, /* EMC_CFG_DIG_DLL */
 			0x00008000, /* EMC_CFG_DIG_DLL_PERIOD */
-			0x0000000c, /* EMC_DLL_XFORM_DQS0 */
-			0x0000000c, /* EMC_DLL_XFORM_DQS1 */
-			0x0000000c, /* EMC_DLL_XFORM_DQS2 */
-			0x0000000c, /* EMC_DLL_XFORM_DQS3 */
-			0x0000000c, /* EMC_DLL_XFORM_DQS4 */
-			0x0000000c, /* EMC_DLL_XFORM_DQS5 */
-			0x0000000c, /* EMC_DLL_XFORM_DQS6 */
-			0x0000000c, /* EMC_DLL_XFORM_DQS7 */
+			0x0000000a, /* EMC_DLL_XFORM_DQS0 */
+			0x0000000a, /* EMC_DLL_XFORM_DQS1 */
+			0x0000000a, /* EMC_DLL_XFORM_DQS2 */
+			0x0000000a, /* EMC_DLL_XFORM_DQS3 */
+			0x0000000a, /* EMC_DLL_XFORM_DQS4 */
+			0x0000000a, /* EMC_DLL_XFORM_DQS5 */
+			0x0000000a, /* EMC_DLL_XFORM_DQS6 */
+			0x0000000a, /* EMC_DLL_XFORM_DQS7 */
 			0x00000000, /* EMC_DLL_XFORM_QUSE0 */
 			0x00000000, /* EMC_DLL_XFORM_QUSE1 */
 			0x00000000, /* EMC_DLL_XFORM_QUSE2 */
@@ -705,7 +701,7 @@ static const struct tegra_emc_table kai_emc_tables_elpida_1gb_edj4216ebbg[] = {
 			0x0000000c, /* EMC_DLL_XFORM_DQ2 */
 			0x0000000c, /* EMC_DLL_XFORM_DQ3 */
 			0x000002a0, /* EMC_XM2CMDPADCTRL */
-			0x0600013d, /* EMC_XM2DQSPADCTRL2 */
+			0x0800013d, /* EMC_XM2DQSPADCTRL2 */
 			0x22220000, /* EMC_XM2DQPADCTRL2 */
 			0x77fff884, /* EMC_XM2CLKPADCTRL */
 			0x01f1f501, /* EMC_XM2COMPPADCTRL */
@@ -751,31 +747,3 @@ static const struct tegra_emc_table kai_emc_tables_elpida_1gb_edj4216ebbg[] = {
 		0x00000000, /* EMC_CFG.DYN_SELF_REF */
 	},
 };
-
-int kai_emc_init(void)
-{
-	int hw_ramcode;
-	hw_ramcode = tegra_get_hw_ramcode();
-	printk("hardware ramcode is %d\n", hw_ramcode);
-	switch (hw_ramcode) {
-	case 0: /* ELPIDA */
-		tegra_init_emc(cl2n_dvt_emc_tables_Elpida_1GB_EDJ4216EBBG_DJ_F_ddr3,
-		       ARRAY_SIZE(cl2n_dvt_emc_tables_Elpida_1GB_EDJ4216EBBG_DJ_F_ddr3));
-		break;
-	case 1: /* HYNIX */
-		tegra_init_emc(cl2n_dvt_emc_tables_Hynix_1GB_H5TC4G63MFR_H9A_ddr3,
-		       ARRAY_SIZE(cl2n_dvt_emc_tables_Hynix_1GB_H5TC4G63MFR_H9A_ddr3));		
-		break;
-	case 2: /* SAMSUNG */
-		tegra_init_emc(cl2n_dvt_emc_tables_Samsung_1GB_K4B4G1646B_HYH9_ddr3,
-		       ARRAY_SIZE(cl2n_dvt_emc_tables_Samsung_1GB_K4B4G1646B_HYH9_ddr3));
-		break;
-	case 3:
-	default:
-		tegra_init_emc(kai_emc_tables_elpida_1gb_edj4216ebbg,
-		       ARRAY_SIZE(kai_emc_tables_elpida_1gb_edj4216ebbg));
-    break;
-	}
-
-	return 0;
-}

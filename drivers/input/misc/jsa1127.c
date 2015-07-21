@@ -27,6 +27,7 @@
 #endif
 
 #include <linux/jsa1127.h>
+#include <linux/cl2n_board_version.h>
 
 /* debug level */
 #define DEBUG_MASK 0
@@ -97,6 +98,37 @@ static struct jsa1127_drv_data jsa1127_data = {
 #define CMD_START_INTEGRATION_ONE_TIME		0x08
 #define CMD_STOP_INTEGRATION_ONE_TIME		0x30
 
+
+static int cl2n_get_attribut(const char *filename,  unsigned char *buf)
+{
+	struct file *pfile = NULL;
+	struct inode *inode;
+	unsigned long magic;
+	off_t fsize;
+	loff_t pos;
+	mm_segment_t old_fs;
+	ssize_t			nread;
+	
+	pfile = filp_open(filename, O_RDONLY, 0);
+	
+	if (IS_ERR(pfile)) {
+		pr_err("[%s]error occured while opening file %s.\n", __FUNCTION__,filename);
+		return -EIO;
+	}
+
+	inode = pfile->f_dentry->d_inode;
+	magic = inode->i_sb->s_magic;
+	fsize = inode->i_size;
+	old_fs = get_fs();
+	set_fs(KERNEL_DS);
+	pos = 0;
+	nread = vfs_read(pfile, buf, fsize, &pos);
+	filp_close(pfile, NULL);
+	set_fs(old_fs);
+	buf[nread-1] = '\0';
+
+	return 0;
+}
 
 static int jsa1127_cmd_send(unsigned char cmd)
 {
@@ -334,6 +366,48 @@ static ssize_t sensor_enable_show(struct device *dev,
 static ssize_t sensor_enable_store(struct device *dev,
 	struct device_attribute *attr, const char *buf, size_t count)
 {
+	//----------------------------------------------------------------
+	if(jsa1127_data.first_boot)
+	{
+			/* Check board ID*/	
+			int cl2n_board_id = cl2n_get_board_strap();
+			
+			if(cl2n_board_id==CL2N_BOARD_VER_A00)//EVT
+			{
+					jsa1127_data.compensate_rate = 50;
+					jsa1127_data.resolution = DEFAULT_RESOLUTION_R100K ;
+					printk("(%s)Check board ID:EVT \n",__FUNCTION__);
+			}
+			else if(cl2n_board_id==CL2N_BOARD_VER_B00)//DVT1/DVT2
+			{
+					char buf[10];
+					cl2n_get_attribut("/sys/block/mmcblk0/device/name",buf);
+					
+					if(!strcmp(buf,"SEM16G"))
+					{			
+						//DVT1
+						jsa1127_data.compensate_rate = 50;
+						jsa1127_data.resolution = DEFAULT_RESOLUTION_R100K ;
+						printk("(%s)Check board ID:DVT1, %s \n",__FUNCTION__,buf);
+					}
+					else
+					{
+						//DVT2
+						jsa1127_data.compensate_rate = 40;
+						jsa1127_data.resolution = DEFAULT_RESOLUTION_R800K ;
+						printk("(%s)Check board ID:DVT2, %s \n",__FUNCTION__,buf);
+					}
+			}
+			else//PVT/MP
+			{
+					jsa1127_data.compensate_rate = 40;
+					jsa1127_data.resolution = DEFAULT_RESOLUTION_R800K ;
+					printk("(%s)Check board ID:PVT/MP \n",__FUNCTION__);
+			}
+			
+		jsa1127_data.first_boot = 0;
+	}
+	//----------------------------------------------------------------
 	int value = simple_strtoul(buf, NULL, 10);
 	unsigned long delay = delay_to_jiffies(jsa1127_data.delay);
 

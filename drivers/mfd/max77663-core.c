@@ -31,6 +31,8 @@
 #define MAX77663_RTC_I2C_ADDR		0x48
 
 /* Registers */
+#define MAX77663_REG_CNFG1_32K	0x03
+#define MAX77663_REG_CNFGBBC		0x04
 #define MAX77663_REG_IRQ_TOP		0x05
 #define MAX77663_REG_LBT_IRQ		0x06
 #define MAX77663_REG_SD_IRQ		0x07
@@ -45,6 +47,7 @@
 #define MAX77663_REG_LDOX_IRQ_MASK	0x10
 #define MAX77663_REG_LDO8_IRQ_MASK	0x11
 #define MAX77663_REG_ONOFF_IRQ_MASK	0x12
+#define MAX77663_REG_ONOFF_CTRL_STAT	0x15
 #define MAX77663_REG_GPIO_CTRL0		0x36
 #define MAX77663_REG_GPIO_CTRL1		0x37
 #define MAX77663_REG_GPIO_CTRL2		0x38
@@ -87,6 +90,8 @@
 #define IRQ_ONOFF_BASE			MAX77663_IRQ_ONOFF_HRDPOWRN
 #define IRQ_ONOFF_END			MAX77663_IRQ_ONOFF_ACOK_RISING
 
+#define ONOFF_STAT_ACOK_MASK	(1 << 1)
+
 #define GPIO_REG_ADDR(offset)		(MAX77663_REG_GPIO_CTRL0 + offset)
 
 #define GPIO_CTRL_DBNC_MASK		(3 << 6)
@@ -117,8 +122,16 @@
 #define ONOFF_PWR_OFF_MASK		(1 << 1)
 
 #define ONOFF_SLP_LPM_MASK		(1 << 5)
-
+#define ONOFF_WK_ALARM0_MASK		(1 << 2)
+#define ONOFF_WK_ALARM1_MASK		(1 << 1)
 #define ONOFF_IRQ_EN0_RISING		(1 << 3)
+
+#define CNFG1_32K_32KLOAD_MASK		(3 << 4)
+#define CNFG1_32K_12PF_PER_NODE		(0 << 4)
+#define CNFG1_32K_22PF_PER_NODE		(1 << 4)
+#define CNFG1_32K_NO_INTERNAL_LOAD	(2 << 4)
+#define CNFG1_32K_10PF_PER_NODE		(3 << 4)
+#define CNFGBBC_BBCCS_MASK		(3 << 1)
 
 enum {
 	CACHE_IRQ_LBT,
@@ -1337,6 +1350,28 @@ static int max77663_probe(struct i2c_client *client,
 		goto out_exit;
 	}
 
+//&*&*&*HC1_20120516
+	// disable alarm0 and alarm1 wakeup source (power on condition)
+	ret = max77663_set_bits(chip->dev, MAX77663_REG_ONOFF_CFG2,
+				ONOFF_WK_ALARM1_MASK|ONOFF_WK_ALARM0_MASK, 0, 0);
+	if (ret < 0) {
+		dev_err(chip->dev, "probe: Failed to set onoff cfg2\n");
+		goto out_exit;
+	}
+//&*&*&*HC2_20120516
+
+//&*&*&*HC1_20120629, select 22pF
+//&*&*&*HC1_20120528, select 12pF
+	// select 22pF for 32K oscillator
+	ret = max77663_set_bits(chip->dev, MAX77663_REG_CNFG1_32K,
+				CNFG1_32K_32KLOAD_MASK, CNFG1_32K_22PF_PER_NODE, 0);
+	if (ret < 0) {
+		dev_err(chip->dev, "probe: Failed to set cfg1 32k\n");
+		goto out_exit;
+	}
+//&*&*&*HC2_20120528, select 12pF
+//&*&*&*HC2_20120629, select 22pF
+
 	if (pdata->use_power_off && !pm_power_off)
 		pm_power_off = max77663_power_off;
 
@@ -1346,7 +1381,7 @@ static int max77663_probe(struct i2c_client *client,
 		dev_err(&client->dev, "probe: Failed to add subdev: %d\n", ret);
 		goto out_exit;
 	}
-
+	
 	return 0;
 
 out_exit:
