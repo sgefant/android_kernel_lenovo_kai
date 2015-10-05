@@ -45,7 +45,7 @@ page, so fix that before commenting this line*/
 #define LOCAL_REG_ACCESS 1
 
 /* Macro to enable the inclusion of tiload kernel driver */
-//#define AIC3262_TiLoad
+#define AIC3262_TiLoad
 
 
 /* Macro enables or disables support for miniDSP in the driver */
