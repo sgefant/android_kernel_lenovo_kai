@@ -282,6 +282,7 @@ static struct i2c_board_info kai_i2c4_smb349_board_info[] = {
 
 static struct aic326x_pdata kai_aic326x_pdata = {
 	.debounce_time_ms = 512,
+        .cspin = TEGRA_CODEC_SPI_CS,
 };
 
 static struct spi_board_info __initdata aic326x_spi_board_info[] = {

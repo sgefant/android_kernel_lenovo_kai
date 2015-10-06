@@ -18,6 +18,10 @@ struct aic326x_pdata {
 	/* has to be one of 16,32,64,128,256,512 ms
 	as per the data sheet */
 	unsigned int debounce_time_ms;
+//&*&*&*BC1_120801
+	unsigned int reset_pin;
+	unsigned int cspin;
+//&*&*&*BC2_120801
 };
 
 #endif
