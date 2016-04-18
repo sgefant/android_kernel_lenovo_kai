@@ -89,8 +89,43 @@ static struct regulator *kai_lvds_vdd_panel;
 /*20120515, JimmySu add board ID*/
 static int panel_board_id =0x7;
 
-static tegra_dc_bl_output kai_bl_output_measured = {
-	0, 1, 2, 3, 4, 5, 6, 7,
+static tegra_dc_bl_output kai_dvt_bl_output_measured = {
+	0, 12, 12, 12, 12, 12, 12, 12,
+	12, 12, 12, 12, 12, 12, 13, 14,
+	15, 16, 17, 18, 19, 20, 20, 21,
+	22, 23, 24, 25, 26, 27, 28, 29,
+	30, 31, 32, 32, 34, 34, 36, 36,
+	38, 39, 40, 40, 41, 42, 42, 43,
+	44, 44, 45, 46, 46, 47, 48, 48,
+	49, 50, 50, 51, 52, 53, 54, 54,
+	55, 56, 57, 58, 58, 59, 60, 61,
+	62, 63, 64, 65, 66, 67, 68, 69,
+	70, 71, 72, 72, 73, 74, 75, 76,
+	76, 77, 78, 79, 80, 81, 82, 83,
+	85, 86, 87, 89, 90, 91, 92, 92,
+	93, 94, 95, 96, 96, 97, 98, 99,
+	100, 100, 101, 102, 103, 104, 104, 105,
+	106, 107, 108, 108, 109, 110, 112, 114,
+	116, 118, 120, 121, 122, 123, 124, 125,
+	126, 127, 128, 129, 130, 131, 132, 133,
+	134, 135, 136, 137, 138, 139, 140, 141,
+	142, 143, 144, 145, 146, 147, 148, 149,
+	150, 151, 151, 152, 153, 153, 154, 155,
+	155, 156, 157, 157, 158, 159, 159, 160,
+	162, 164, 166, 168, 170, 172, 174, 176,
+	178, 180, 181, 181, 182, 183, 183, 184,
+	185, 185, 186, 187, 187, 188, 189, 189,
+	190, 191, 192, 193, 194, 195, 196, 197,
+	198, 199, 200, 201, 201, 202, 203, 203,
+	204, 205, 205, 206, 207, 207, 208, 209,
+	209, 210, 211, 211, 212, 212, 213, 213,
+	214, 215, 215, 216, 216, 217, 217, 218,
+	219, 219, 220, 222, 226, 230, 232, 234,
+	236, 238, 240, 244, 248, 251, 253, 255
+};
+
+static tegra_dc_bl_output kai_mppvt_bl_output_measured = {
+	0, 6, 6, 6, 6, 6, 6, 7,
 	7, 8, 9, 10, 11, 12, 13, 14,
 	15, 16, 17, 18, 19, 20, 20, 21,
 	22, 23, 24, 25, 26, 27, 28, 29,
@@ -132,10 +167,17 @@ static int kai_backlight_init(struct device *dev)
 {
 	int ret;
 
-	bl_output = kai_bl_output_measured;
-
-	if (WARN_ON(ARRAY_SIZE(kai_bl_output_measured) != 256))
-		pr_err("bl_output array does not have 256 elements\n");
+	if (panel_board_id == CL2N_BOARD_VER_B00){
+		printk("Detected DVT board.");
+		bl_output = kai_dvt_bl_output_measured;
+		if (WARN_ON(ARRAY_SIZE(kai_dvt_bl_output_measured) != 256))
+			pr_err("bl_output array does not have 256 elements\n");
+	}else{
+		printk("Detected MP/PVT board (or something else entirely).");
+		bl_output = kai_mppvt_bl_output_measured;
+		if (WARN_ON(ARRAY_SIZE(kai_mppvt_bl_output_measured) != 256))
+			pr_err("bl_output array does not have 256 elements\n");
+	}
 
 	tegra_gpio_disable(kai_bl_pwm);
 
@@ -250,7 +292,7 @@ static int kai_panel_enable(void)
 
 	gpio_set_value(kai_lvds_avdd_en, 1);
 
-	if (first != 0){ 
+	if (first != 0){
 		msleep(40);
 	gpio_set_value(kai_lvds_rst, 0);
 		udelay(500);
@@ -299,7 +341,7 @@ static int kai_panel_disable(void)
 	regulator_disable(kai_lvds_vdd_panel);
 	regulator_put(kai_lvds_vdd_panel);
 	kai_lvds_vdd_panel = NULL;
-	
+
 	gpio_set_value(kai_lvds_lr, 0);
 	gpio_set_value(kai_lvds_ud, 0);
 	gpio_set_value(kai_lvds_rs, 0);
@@ -458,6 +500,7 @@ static struct tegra_dc_sd_settings kai_sd_settings = {
 	.hw_update_delay = 0,
 	.bin_width = -1,
 	.aggressiveness = 1,
+	.panel_min_brightness = 0,
 	.phase_in_adjustments = true,
 	.use_vid_luma = false,
 	/* Default video coefficients */
@@ -763,6 +806,12 @@ int __init kai_panel_init(void)
 
 	panel_board_id = cl2n_get_board_strap();
 
+	if (panel_board_id == CL2N_BOARD_VER_B00){
+		kai_sd_settings.panel_min_brightness = 12;
+	}else{
+		kai_sd_settings.panel_min_brightness = 6;
+	}
+
 #if defined(CONFIG_TEGRA_NVMAP)
 	kai_carveouts[1].base = tegra_carveout_start;
 	kai_carveouts[1].size = tegra_carveout_size;
@@ -776,7 +825,7 @@ int __init kai_panel_init(void)
 	gpio_request(kai_lvds_stdby_evt, "lvds_stdby_evt");
 	gpio_direction_output(kai_lvds_stdby_evt, 1);
 	tegra_gpio_enable(kai_lvds_stdby_evt);
-	}else{	
+	}else{
 	gpio_request(kai_lvds_stdby, "lvds_stdby");
 	gpio_direction_output(kai_lvds_stdby, 1);
 	tegra_gpio_enable(kai_lvds_stdby);
