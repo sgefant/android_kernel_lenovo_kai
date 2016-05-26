@@ -18,7 +18,7 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */
 
-#include <linux/delay.h> 
+#include <linux/delay.h>
 #include <linux/err.h>
 #include <linux/i2c.h>
 #include <linux/lis3dh.h>
@@ -116,23 +116,21 @@ static struct lis3dh_acc_platform_data kai_lis3dh_acc_pdata = {
 };
 
 static int kai_s5kcag_init(void)
-{	
+{
 	struct kai_cam_power_rail *cam_pwr = &kai_cam_pwr[CAM_REAR];
 	printk("[camera](%s) \n",__FUNCTION__);
 	gpio_set_value(cam_pwr->gpio_pwdn->gpio, !cam_pwr->gpio_pwdn->active_high);//pwdn_3M low
 	gpio_set_value(CAM_VDD_GPIO, 1);//1.8 high
-	msleep(1); 
-	gpio_set_value(CAM1_LDO_GPIO, 1);//2.8v_3M high
 	msleep(1);
-	tegra_gpio_disable(CAM_MCLK_EN_GPIO);//gpio->clk
-	msleep(20);		
+	gpio_set_value(CAM1_LDO_GPIO, 1);//2.8v_3M high
+	msleep(20);
 	gpio_set_value(cam_pwr->gpio_pwdn->gpio, cam_pwr->gpio_pwdn->active_high);//pwdn_3M high
 	msleep(20);
 	gpio_set_value(cam_pwr->gpio_pwdn->gpio, !cam_pwr->gpio_pwdn->active_high);//pwdn_3M low
 	msleep(20);
 	gpio_set_value(cam_pwr->gpio_rst->gpio, !cam_pwr->gpio_rst->active_high);//rst_3M high
 	msleep(20);
-	
+
 	return 0;
 }
 
@@ -153,26 +151,22 @@ static int kai_camera_init(void)
 		gpio_direction_output(kai_cam_gpio_data[i].gpio,
 				      kai_cam_gpio_data[i].value);
 		gpio_export(kai_cam_gpio_data[i].gpio, false);
-		tegra_gpio_enable(kai_cam_gpio_data[i].gpio);
 	}
 
-	tegra_gpio_enable(CAM1_LDO_GPIO);
 	ret = gpio_request(CAM1_LDO_GPIO, "cam1_ldo_en");
 	if (ret < 0) {
 		pr_err("%s: gpio_request failed for gpio %s\n",
 			__func__, "CAM1_LDO_GPIO");
 			goto fail_cam1_gpio;
 	}
-	
-	tegra_gpio_enable(CAM2_LDO_GPIO);
+
 	ret = gpio_request(CAM2_LDO_GPIO, "cam2_ldo_en");
 	if (ret < 0) {
 		pr_err("%s: gpio_request failed for gpio %s\n",
 			__func__, "CAM2_LDO_GPIO");
 			goto fail_cam2_gpio;
 	}
-	
-	tegra_gpio_enable(CAM_VDD_GPIO);
+
 	ret = gpio_request(CAM_VDD_GPIO, "cam_vdd_en");
 	if (ret < 0) {
 		pr_err("%s: gpio_request failed for gpio %s\n",
@@ -191,7 +185,6 @@ static int kai_camera_init(void)
 	}
 	gpio_direction_output(CAM_MCLK_EN_GPIO,0);
 	gpio_set_value(CAM_MCLK_EN_GPIO, 0);
-	tegra_gpio_enable(CAM_MCLK_EN_GPIO);
 	gpio_direction_output(CAM1_POWER_DWN_GPIO,0);
 	gpio_set_value(CAM1_POWER_DWN_GPIO, 0);
 	return 0;
@@ -213,129 +206,135 @@ fail_cam1_gpio:
 fail_cam2_gpio:
 	gpio_free(CAM2_LDO_GPIO);
 	return ret;
-		
+
 }
 
 static int kai_s5k5cag_power_on(int delay_time)
 {
-	struct kai_cam_power_rail *cam_pwr = &kai_cam_pwr[CAM_REAR];	
+	int ret = 0;
+
+	struct kai_cam_power_rail *cam_pwr = &kai_cam_pwr[CAM_REAR];
 	printk("[Jimmy][camera](%s) \n",__FUNCTION__);
-	
+
 	msleep(1);
-	
-	tegra_gpio_disable(CAM_MCLK_EN_GPIO);//gpio->clk
-	
+
+	ret = gpio_request(CAM_MCLK_EN_GPIO, "mclk_disable");
+	if (ret < 0)
+	{
+			gpio_free(CAM_MCLK_EN_GPIO);
+	}
+
 	msleep(10);
-	
+
 	gpio_set_value(cam_pwr->gpio_pwdn->gpio, !cam_pwr->gpio_pwdn->active_high);//pwdn_3M low
-	
+
 	msleep(20);
-	
+
 	return 0;
 }
 
 static int kai_s5k5cag_power_off(void)
 {
-	
+
 	struct kai_cam_power_rail *cam_pwr = &kai_cam_pwr[CAM_REAR];
 	printk("[Jimmy][camera](%s) \n",__FUNCTION__);
-	
+
 	gpio_set_value(cam_pwr->gpio_pwdn->gpio, cam_pwr->gpio_pwdn->active_high);//pwdn_3M high
 
-	msleep(1);	
-	
-	tegra_gpio_enable(CAM_MCLK_EN_GPIO);//clk->gpio
-	
+	msleep(10);
+
 	gpio_set_value(CAM_MCLK_EN_GPIO, 0);//gpio -> low
-	
+
 	msleep(20);
-	
+
 	return 0;
 }
 
 static int kai_s5k5cag_suspend(void)
 {
-	
-	struct kai_cam_power_rail *cam_pwr = &kai_cam_pwr[CAM_REAR];	
+
+	struct kai_cam_power_rail *cam_pwr = &kai_cam_pwr[CAM_REAR];
 	printk("[Jimmy][camera](%s) \n",__FUNCTION__);
 
 	gpio_set_value(cam_pwr->gpio_pwdn->gpio, cam_pwr->gpio_pwdn->active_high);//pwdn_3M high
-	
+
 	msleep(20);
-	
+
 	gpio_set_value(cam_pwr->gpio_rst->gpio, cam_pwr->gpio_rst->active_high);//rst_3M low
 
 	msleep(1);
-	
-	tegra_gpio_enable(CAM_MCLK_EN_GPIO);//clk->gpio
-	
+
+	gpio_direction_output(CAM_MCLK_EN_GPIO,0);//clk->gpio
+
 	gpio_set_value(CAM_MCLK_EN_GPIO, 0);//gpio -> low
 
 	gpio_set_value(CAM_VDD_GPIO, 0);//1.8v low
-	
+
 	gpio_set_value(CAM1_LDO_GPIO, 0);//2.8v_3M low
 
 	msleep(20);
-	
+
 	gpio_set_value(cam_pwr->gpio_pwdn->gpio, !cam_pwr->gpio_pwdn->active_high);//pwdn_3M low
-	
+
 	return 0;
 }
 
 static int kai_mt9m114_power_on(int delay_time)
 {
-	
+	int ret = 0;
 	struct kai_cam_power_rail *cam_pwr = &kai_cam_pwr[CAM_FRONT];
 	printk("[Jimmy][camera](%s) \n",__FUNCTION__);
 
 	gpio_set_value(cam_pwr->gpio_pwdn->gpio, !cam_pwr->gpio_pwdn->active_high);//pwdn_1.3M low
 
 	gpio_set_value(CAM2_LDO_GPIO, 1);//2.8v_1.3M high
-	
+
 	msleep(1);
-	
-	tegra_gpio_disable(CAM_MCLK_EN_GPIO);//gpio->clk
-	
+
+	ret = gpio_request(CAM_MCLK_EN_GPIO, "mclk_disable");
+	if (ret < 0)
+	{
+			gpio_free(CAM_MCLK_EN_GPIO);
+	}
+
 	msleep(10);
-		
+
 	gpio_set_value(cam_pwr->gpio_pwdn->gpio, cam_pwr->gpio_pwdn->active_high);//pwdn_1.3M high
-	
+
 	msleep(10);
 
 	gpio_set_value(cam_pwr->gpio_pwdn->gpio, !cam_pwr->gpio_pwdn->active_high);//pwdn_1.3M low
-	
+
 	msleep(10);
-		
+
 	gpio_set_value(cam_pwr->gpio_rst->gpio, !cam_pwr->gpio_rst->active_high);//rst_1.3M high
-	
+
 	msleep(10);
-			
+
 	return 0;
 }
 
 static int kai_mt9m114_power_off(void)
 {
-	struct kai_cam_power_rail *cam_pwr = &kai_cam_pwr[CAM_FRONT];	
+	struct kai_cam_power_rail *cam_pwr = &kai_cam_pwr[CAM_FRONT];
 	printk("[Jimmy][camera](%s) \n",__FUNCTION__);
 
 	gpio_set_value(cam_pwr->gpio_pwdn->gpio, cam_pwr->gpio_pwdn->active_high);//pwdn_1.3M high
-	
+
 	msleep(20);
-	
+
 	gpio_set_value(cam_pwr->gpio_rst->gpio, cam_pwr->gpio_rst->active_high);//rst_1.3M low
 
 	msleep(1);
-	
-	tegra_gpio_enable(CAM_MCLK_EN_GPIO);//clk->gpio
-	
+
 	gpio_set_value(CAM_MCLK_EN_GPIO, 0);//gpio -> low
 
 	gpio_set_value(CAM2_LDO_GPIO, 0);//2.8v_1.3M low
 
 	msleep(20);
-	
+
 	gpio_set_value(cam_pwr->gpio_pwdn->gpio, !cam_pwr->gpio_pwdn->active_high);//pwdn_1.3M low
-	
+
 	return 0;
 }
 
@@ -398,7 +397,7 @@ int __init kai_sensors_init(void)
 	kai_camera_init();
 	kai_s5kcag_init();
 	kai_s5k5cag_power_off();
-	
+
 	i2c_register_board_info(2, kai_i2c2_board_info,
 		ARRAY_SIZE(kai_i2c2_board_info));
 	i2c_register_board_info(0, kai_i2c0_board_info,

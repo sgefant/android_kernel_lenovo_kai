@@ -179,8 +179,6 @@ static int kai_backlight_init(struct device *dev)
 			pr_err("bl_output array does not have 256 elements\n");
 	}
 
-	tegra_gpio_disable(kai_bl_pwm);
-
 	ret = gpio_request(kai_vdd_bl_enb, "backlight_enb");
 	if (ret < 0)
 		return ret;
@@ -188,9 +186,6 @@ static int kai_backlight_init(struct device *dev)
 	ret = gpio_direction_output(kai_vdd_bl_enb, 1);
 	if (ret < 0)
 		gpio_free(kai_vdd_bl_enb);
-	else
-		tegra_gpio_enable(kai_vdd_bl_enb);
-
 	return ret;
 };
 
@@ -199,6 +194,7 @@ static void kai_backlight_exit(struct device *dev)
 	/* int ret; */
 	/*ret = gpio_request(kai_vdd_bl_enb, "backlight_enb");*/
 	gpio_set_value(kai_vdd_bl_enb, 0);
+	gpio_free(kai_vdd_bl_enb);
 	return;
 }
 
@@ -249,7 +245,7 @@ static int kai_panel_enable(void)
 		clk_enable(emc_clk_lock);
 	}
 
-	tegra_gpio_disable(kai_bl_pwm); /*20120608, JimmySu prevent flash screen while shutdown device*/
+	gpio_free(kai_bl_pwm); /*20120608, JimmySu prevent flash screen while shutdown device*/
 
 	cl2n_panel_status = 1; /*20120607, jimmySu add to judge display status */
 	gpio_set_value(kai_lvds_lr, 1);
@@ -315,7 +311,6 @@ static int kai_panel_disable(void)
 		clk_disable(emc_clk_lock);
 	}
 
-	tegra_gpio_enable(kai_bl_pwm);
 	gpio_request(kai_bl_pwm, "backlight-pwm-sleep");
 	gpio_direction_output(kai_bl_pwm, 0);
 	gpio_set_value(kai_bl_pwm, 0);
@@ -760,7 +755,6 @@ static int panel_prepare_for_shutdown(struct notifier_block *this,
 		return NOTIFY_DONE;
 
 
-	tegra_gpio_enable(kai_bl_pwm);
 	gpio_request(kai_bl_pwm, "backlight-pwm-sleep");
 	gpio_direction_output(kai_bl_pwm, 0);
 	gpio_set_value(kai_bl_pwm, 0);
@@ -819,51 +813,39 @@ int __init kai_panel_init(void)
 
 	gpio_request(kai_lvds_avdd_en, "lvds_avdd_en");
 	gpio_direction_output(kai_lvds_avdd_en, 1);
-	tegra_gpio_enable(kai_lvds_avdd_en);
 
 	if (panel_board_id == CL2N_BOARD_VER_A00){
 	gpio_request(kai_lvds_stdby_evt, "lvds_stdby_evt");
 	gpio_direction_output(kai_lvds_stdby_evt, 1);
-	tegra_gpio_enable(kai_lvds_stdby_evt);
 	}else{
 	gpio_request(kai_lvds_stdby, "lvds_stdby");
 	gpio_direction_output(kai_lvds_stdby, 1);
-	tegra_gpio_enable(kai_lvds_stdby);
 	}
 
 	gpio_request(kai_lvds_rst, "lvds_rst");
 	gpio_direction_output(kai_lvds_rst, 1);
-	tegra_gpio_enable(kai_lvds_rst);
 
 	gpio_request(kai_lvds_rs, "lvds_rs");
 	gpio_direction_output(kai_lvds_rs, 1);
-	tegra_gpio_enable(kai_lvds_rs);
 
 	gpio_request(kai_lvds_lr, "lvds_lr");
 	gpio_direction_output(kai_lvds_lr, 1);
-	tegra_gpio_enable(kai_lvds_lr);
 
 	gpio_request(kai_lvds_ud, "lvds_ud");
 	gpio_direction_output(kai_lvds_ud, 0);
-	tegra_gpio_enable(kai_lvds_ud);
 
 	gpio_request(kai_lvds_bpp, "lvds_bpp");
 	gpio_direction_output(kai_lvds_bpp, 0); /* 24BPP */
-	tegra_gpio_enable(kai_lvds_bpp);
 
 	/* CABC Off */
 	gpio_request(kai_lvds_mode0, "lvds_mode0");
 	gpio_direction_output(kai_lvds_mode0, 0);
-	tegra_gpio_enable(kai_lvds_mode0);
 	gpio_request(kai_lvds_mode1, "lvds_mode1");
 	gpio_direction_output(kai_lvds_mode1, 0);
-	tegra_gpio_enable(kai_lvds_mode1);
 
 	gpio_request(kai_lvds_shutdown, "lvds_shutdown");
 	gpio_direction_output(kai_lvds_shutdown, 1);
-	tegra_gpio_enable(kai_lvds_shutdown);
 
-	tegra_gpio_enable(kai_hdmi_hpd);
 	gpio_request(kai_hdmi_hpd, "hdmi_hpd");
 	gpio_direction_input(kai_hdmi_hpd);
 

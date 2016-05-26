@@ -682,9 +682,6 @@ static int __init touch_init_ft5x06_kai(void)
 {
 	pr_debug("%s\n", __func__);
 
-	tegra_gpio_enable(TEGRA_GPIO_PH4);
-	tegra_gpio_enable(TEGRA_GPIO_PH5);
-
 	gpio_request(TEGRA_GPIO_PH4, "ft5x0x-irq");
 	gpio_direction_input(TEGRA_GPIO_PH4);
 	i2c_register_board_info(1, ft5x06_i2c_info, 1);

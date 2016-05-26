@@ -17,7 +17,7 @@
 
 #include <linux/resource.h>
 #include <linux/platform_device.h>
-#include <linux/wlan_plat.h>  
+#include <linux/wlan_plat.h>
 #include <linux/delay.h>
 #include <linux/gpio.h>
 #include <linux/clk.h>
@@ -252,18 +252,15 @@ static int __init kai_wifi_init(void)
 	rc = gpio_request(KAI_WLAN_PWR, "wlan_power");
 	if (rc)
 		pr_err("WLAN_PWR gpio request failed:%d\n", rc);
-	
+
 	rc = gpio_request(KAI_WLAN_WOW, "bcmsdh_sdmmc");
 	if (rc)
 		pr_err("WLAN_WOW gpio request failed:%d\n", rc);
 
-	tegra_gpio_enable(KAI_WLAN_PWR);
-	tegra_gpio_enable(KAI_WLAN_WOW);
-
 	rc = gpio_direction_output(KAI_WLAN_PWR, 0);
 	if (rc)
 		pr_err("WLAN_PWR gpio direction configuration failed:%d\n", rc);
-	
+
 	rc = gpio_direction_input(KAI_WLAN_WOW);
 	if (rc)
 		pr_err("WLAN_WOW gpio direction configuration failed:%d\n", rc);
