@@ -107,6 +107,9 @@ enum max77663_regulator_fps_src {
 /* Tracking for LDO4 */
 #define LDO4_EN_TRACKING	0x100
 
+/* Disable Active Discharge Function for LDO4 */
+#define LDO4_ADE_DISABLE       0x200
+
 struct max77663_regulator_fps_cfg {
 	enum max77663_regulator_fps_src src;
 	enum max77663_regulator_fps_en_src en_src;

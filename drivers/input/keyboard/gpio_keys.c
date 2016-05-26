@@ -31,6 +31,7 @@
 #include <linux/of_platform.h>
 #include <linux/of_gpio.h>
 #include <linux/spinlock.h>
+#include <linux/switch.h>
 
 struct gpio_button_data {
 	const struct gpio_keys_button *button;
@@ -48,10 +49,33 @@ struct gpio_keys_drvdata {
 	struct input_dev *input;
 	struct mutex disable_lock;
 	unsigned int n_buttons;
+	int lock_status;
+	struct switch_dev sdev;
 	int (*enable)(struct device *dev);
 	void (*disable)(struct device *dev);
 	struct gpio_button_data data[0];
 };
+
+#define FUNCTION_NAME	"rotationlock"
+#define TEGRA_GPIO_PQ2		130
+
+struct input_dev *g_pwr_input = NULL;
+
+void SendPowerbuttonEvent( void )
+{
+	if (g_pwr_input != NULL) 
+	{	
+		input_report_key(g_pwr_input, KEY_POWER, 1);
+		input_report_key(g_pwr_input, KEY_POWER, 0);
+
+		input_sync(g_pwr_input);
+
+		printk("%s ...\n", __func__);
+	}	
+	else
+		printk("%s, fail !!!\n", __func__);
+}
+EXPORT_SYMBOL(SendPowerbuttonEvent);
 
 /*
  * SYSFS interface for enabling/disabling keys and switches:
@@ -646,6 +670,27 @@ static void gpio_remove_key(struct gpio_button_data *bdata)
 		gpio_free(bdata->button->gpio);
 }
 
+static ssize_t print_switch_name(struct switch_dev *sdev, char *buf)
+{
+	return sprintf(buf, "%s\n", FUNCTION_NAME);
+}
+static ssize_t print_switch_state(struct switch_dev *sdev, char *buf)
+{
+	struct gpio_keys_drvdata *ddata = container_of(sdev, struct gpio_keys_drvdata , sdev);
+	return sprintf(buf, "%s\n", (ddata->lock_status ? "1" : "0"));
+}
+
+
+static irqreturn_t process_interrupt(int irq, void *_ddata)
+{
+	struct gpio_keys_drvdata *ddata = _ddata;
+	//printk("in the process_interrupt\n");
+	ddata->lock_status= gpio_get_value(TEGRA_GPIO_PQ2); 
+	printk("ddata->lock_status : %d\n",ddata->lock_status);
+	switch_set_state(&ddata->sdev, ddata->lock_status);
+	return IRQ_HANDLED;
+}
+
 static int __devinit gpio_keys_probe(struct platform_device *pdev)
 {
 	const struct gpio_keys_platform_data *pdata = pdev->dev.platform_data;
@@ -722,6 +767,48 @@ static int __devinit gpio_keys_probe(struct platform_device *pdev)
 			error);
 		goto fail3;
 	}
+	
+	ddata->lock_status= gpio_get_value(TEGRA_GPIO_PQ2); //get KB_COL2 pin status
+	
+	ddata->sdev.name = FUNCTION_NAME;
+	ddata->sdev.print_name = print_switch_name;
+	ddata->sdev.print_state = print_switch_state;
+	ddata->sdev.state = 0;
+	error = switch_dev_register(&ddata->sdev);
+
+	if (error < 0)
+	{
+		printk("Error registering switch!\n");
+		goto fail4;
+	}
+	
+	error = gpio_request(TEGRA_GPIO_PQ2, "glocksensor_irq");
+	if (error < 0) {
+		dev_err(dev, "failed to request TEGRA_GPIO_PQ2  error %d\n",
+			error);
+		goto fail4;
+	}
+
+	error = gpio_direction_input(TEGRA_GPIO_PQ2);
+	if (error < 0) {
+		dev_err(dev, "failed to configure direction for TEGRA_GPIO_PQ2 error %d\n",
+			error);
+		goto fail4;
+	}
+	
+	tegra_gpio_enable(TEGRA_GPIO_PQ2);
+		
+	ddata->lock_status= gpio_get_value(TEGRA_GPIO_PQ2);
+	
+	switch_set_state(&ddata->sdev, ddata->lock_status);
+	
+	error = request_threaded_irq(gpio_to_irq(TEGRA_GPIO_PQ2),NULL, process_interrupt, IRQF_TRIGGER_FALLING |IRQF_TRIGGER_RISING, "glocksensor_irq", ddata);
+	if( error )
+	{
+		dev_err(dev, "Unable to register swith interrupt device, error: %d\n",
+			error);
+		goto fail5;
+	}
 
 	/* get current state of buttons that are connected to GPIOs */
 	for (i = 0; i < pdata->nbuttons; i++) {
@@ -731,9 +818,16 @@ static int __devinit gpio_keys_probe(struct platform_device *pdev)
 	}
 	input_sync(input);
 
+	if (input != NULL)
+		g_pwr_input = input;
+
 	device_init_wakeup(&pdev->dev, wakeup);
 
 	return 0;
+ fail5:
+	switch_dev_unregister(&ddata->sdev);
+ fail4:
+ 	gpio_free(TEGRA_GPIO_PQ2);
 
  fail3:
 	sysfs_remove_group(&pdev->dev.kobj, &gpio_keys_attr_group);
@@ -765,6 +859,8 @@ static int __devexit gpio_keys_remove(struct platform_device *pdev)
 	for (i = 0; i < ddata->n_buttons; i++)
 		gpio_remove_key(&ddata->data[i]);
 
+	gpio_free(TEGRA_GPIO_PQ2);
+
 	input_unregister_device(input);
 
 	/*
@@ -793,7 +889,10 @@ static int gpio_keys_suspend(struct device *dev)
 				enable_irq_wake(bdata->irq);
 		}
 	}
-
+	
+	disable_irq(gpio_to_irq(TEGRA_GPIO_PQ2));
+	gpio_direction_input(TEGRA_GPIO_PQ2);	
+	
 	return 0;
 }
 
@@ -825,6 +924,10 @@ static int gpio_keys_resume(struct device *dev)
 			gpio_keys_gpio_report_event(bdata);
 	}
 	input_sync(ddata->input);
+	
+	enable_irq(gpio_to_irq(TEGRA_GPIO_PQ2));
+	ddata->lock_status= gpio_get_value(TEGRA_GPIO_PQ2); 
+	switch_set_state(&ddata->sdev, ddata->lock_status);
 
 	return 0;
 }

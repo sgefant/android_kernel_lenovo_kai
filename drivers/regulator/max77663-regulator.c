@@ -96,6 +96,8 @@
 /* LDO Configuration 3 */
 #define TRACK4_MASK			0x20
 #define TRACK4_SHIFT			5
+#define LDO4_ADE_SHIFT			1
+#define LDO4_ADE_ACTIVE_HIGH		1
 
 /* Voltage */
 #define SDX_VOLT_MASK			0xFF
@@ -755,6 +757,19 @@ skip_init_apply:
 		}
 	}
 
+	if ((reg->id == MAX77663_REGULATOR_ID_LDO4)
+			&& (pdata->flags & LDO4_ADE_DISABLE)) {
+		ret = max77663_regulator_cache_write(reg,
+				reg->regs[CFG_REG].addr, 1 << LDO4_ADE_SHIFT,
+				LDO4_ADE_ACTIVE_HIGH ? 0 : 1,
+				&reg->regs[CFG_REG].val);
+		if (ret < 0) {
+			dev_err(reg->dev, "preinit: "
+				"Failed to set register 0x%x\n",
+				reg->regs[CFG_REG].addr);
+			return ret;
+		}
+	}
 	return 0;
 }
 

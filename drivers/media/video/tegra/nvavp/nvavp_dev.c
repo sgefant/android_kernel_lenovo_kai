@@ -1144,6 +1144,12 @@ static int nvavp_pushbuffer_submit_ioctl(struct file *filp, unsigned int cmd,
 	if (!hdr.cmdbuf.mem)
 		return 0;
 
+	if (hdr.num_relocs > NVAVP_MAX_RELOCATION_COUNT) {
+		dev_err(&nvavp->nvhost_dev->dev,
+			"invalid num_relocs %d\n", hdr.num_relocs);
+		return -EINVAL;
+	}
+
 	if (copy_from_user(clientctx->relocs, (void __user *)hdr.relocs,
 			sizeof(struct nvavp_reloc) * hdr.num_relocs)) {
 		return -EFAULT;
@@ -1182,15 +1188,31 @@ static int nvavp_pushbuffer_submit_ioctl(struct file *filp, unsigned int cmd,
 		goto err_cmdbuf_mmap;
 	}
 
+	if (hdr.cmdbuf.offset > cmdbuf_handle->size) {
+		dev_err(&nvavp->nvhost_dev->dev,
+			"invalid cmdbuf offset %d\n", hdr.cmdbuf.offset);
+		ret = -EINVAL;
+		goto err_cmdbuf_mmap;
+	}
+
 	cmdbuf_data = (u32 *)(virt_addr + hdr.cmdbuf.offset);
 
 	for (i = 0; i < hdr.num_relocs; i++) {
 		u32 *reloc_addr, target_phys_addr;
+		struct nvmap_handle *target_handle;
 
 		if (clientctx->relocs[i].cmdbuf_mem != hdr.cmdbuf.mem) {
 			dev_err(&nvavp->nvhost_dev->dev,
 				"reloc info does not match target bufferID\n");
 			ret = -EPERM;
+			goto err_reloc_info;
+		}
+
+		if (clientctx->relocs[i].cmdbuf_offset > cmdbuf_handle->size) {
+			dev_err(&nvavp->nvhost_dev->dev,
+				"invalid reloc offset in cmdbuf %d\n",
+				 clientctx->relocs[i].cmdbuf_offset);
+			ret = -EINVAL;
 			goto err_reloc_info;
 		}
 
@@ -1200,6 +1222,22 @@ static int nvavp_pushbuffer_submit_ioctl(struct file *filp, unsigned int cmd,
 		target_phys_addr = nvmap_handle_address(clientctx->nvmap,
 					    clientctx->relocs[i].target);
 		target_phys_addr += clientctx->relocs[i].target_offset;
+
+		target_handle = nvmap_get_handle_id(clientctx->nvmap, clientctx->relocs[i].target);
+		if (target_handle == NULL) {
+			dev_err(&nvavp->nvhost_dev->dev,
+				"invalid target buffer handle %08x\n", clientctx->relocs[i].target);
+			return -EPERM;
+		}
+
+		if (clientctx->relocs[i].target_offset > target_handle->size) {
+		        dev_err(&nvavp->nvhost_dev->dev,
+			"invalid target offset in reloc %d\n",
+				clientctx->relocs[i].target_offset);
+			ret = -EINVAL;
+			goto err_reloc_info;
+		}
+
 		writel(target_phys_addr, reloc_addr);
 	}
 

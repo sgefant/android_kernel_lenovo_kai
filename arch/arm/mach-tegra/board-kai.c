@@ -37,12 +37,13 @@
 #include <linux/spi-tegra.h>
 #include <linux/nfc/pn544.h>
 #include <linux/skbuff.h>
-#include <linux/ti_wilink_st.h>
+#include <linux/rfkill-gpio.h>
 #include <linux/regulator/consumer.h>
 #include <linux/smb349-charger.h>
 #include <linux/max17048_battery.h>
 #include <linux/leds.h>
 #include <linux/i2c/at24.h>
+#include <linux/i2c/ft5x06_ts.h>
 
 #include <mach/clk.h>
 #include <mach/iomap.h>
@@ -53,6 +54,7 @@
 #include <mach/io_dpd.h>
 #include <mach/i2s.h>
 #include <mach/tegra_asoc_pdata.h>
+#include <sound/tlv320aic326x.h>
 #include <asm/mach-types.h>
 #include <asm/mach/arch.h>
 #include <mach/usb_phy.h>
@@ -125,35 +127,24 @@ static struct tegra_thermal_data thermal_data = {
 #endif
 };
 
-
-/* wl128x BT, FM, GPS connectivity chip */
-struct ti_st_plat_data kai_wilink_pdata = {
-	.nshutdown_gpio = TEGRA_GPIO_PU0,
-	.dev_name = BLUETOOTH_UART_DEV_NAME,
-	.flow_cntrl = 1,
-	.baud_rate = 3000000,
+static struct rfkill_gpio_platform_data cardhu_bt_rfkill_pdata[] = {
+	{
+		.name           = "bt_rfkill",
+		.shutdown_gpio  = TEGRA_GPIO_PU0,
+		.reset_gpio     = TEGRA_GPIO_INVALID,
+		.type           = RFKILL_TYPE_BLUETOOTH,
+	},
 };
 
-static struct platform_device wl128x_device = {
-	.name		= "kim",
-	.id		= -1,
-	.dev.platform_data = &kai_wilink_pdata,
+static struct platform_device cardhu_bt_rfkill_device = {
+	.name = "rfkill_gpio",
+	.id             = -1,
+	.dev = {
+		.platform_data = &cardhu_bt_rfkill_pdata,
+	},
 };
 
-static struct platform_device btwilink_device = {
-	.name = "btwilink",
-	.id = -1,
-};
-
-static noinline void __init kai_bt_st(void)
-{
-	pr_info("kai_bt_st");
-
-	platform_device_register(&wl128x_device);
-	platform_device_register(&btwilink_device);
-}
-
-static struct resource kai_bluesleep_resources[] = {
+static struct resource cardhu_bluesleep_resources[] = {
 	[0] = {
 		.name = "gpio_host_wake",
 			.start  = TEGRA_GPIO_PU6,
@@ -161,23 +152,32 @@ static struct resource kai_bluesleep_resources[] = {
 			.flags  = IORESOURCE_IO,
 	},
 	[1] = {
+		.name = "gpio_ext_wake",
+			.start  = TEGRA_GPIO_PU1,
+			.end    = TEGRA_GPIO_PU1,
+			.flags  = IORESOURCE_IO,
+	},
+	[2] = {
 		.name = "host_wake",
-			.start	= TEGRA_GPIO_TO_IRQ(TEGRA_GPIO_PU6),
-			.end	= TEGRA_GPIO_TO_IRQ(TEGRA_GPIO_PU6),
-			.flags	= IORESOURCE_IRQ | IORESOURCE_IRQ_HIGHEDGE,
+			.start  = TEGRA_GPIO_TO_IRQ(TEGRA_GPIO_PU6),
+			.end    = TEGRA_GPIO_TO_IRQ(TEGRA_GPIO_PU6),
+			.flags  = IORESOURCE_IRQ | IORESOURCE_IRQ_HIGHEDGE,
 	},
 };
 
-static struct platform_device kai_bluesleep_device = {
-	.name		= "bluesleep",
-	.id		= 0,
-	.num_resources	= ARRAY_SIZE(kai_bluesleep_resources),
-	.resource	= kai_bluesleep_resources,
+static struct platform_device cardhu_bluesleep_device = {
+	.name           = "bluesleep",
+	.id             = -1,
+	.num_resources  = ARRAY_SIZE(cardhu_bluesleep_resources),
+	.resource       = cardhu_bluesleep_resources,
 };
 
-static noinline void __init kai_tegra_setup_tibluesleep(void)
+extern void bluesleep_setup_uart_port(struct platform_device *uart_dev);
+static noinline void __init cardhu_setup_bluesleep(void)
 {
-	platform_device_register(&kai_bluesleep_device);
+	platform_device_register(&cardhu_bluesleep_device);
+	bluesleep_setup_uart_port(&tegra_uartc_device);
+	return;
 }
 
 static __initdata struct tegra_clk_init_table kai_clk_init_table[] = {
@@ -204,20 +204,6 @@ static __initdata struct tegra_clk_init_table kai_clk_init_table[] = {
 	{ "i2c4",	"pll_p",	3200000,	false},
 	{ "i2c5",	"pll_p",	3200000,	false},
 	{ NULL,		NULL,		0,		0},
-};
-
-static struct pn544_i2c_platform_data nfc_pdata = {
-	.irq_gpio = TEGRA_GPIO_PX0,
-	.ven_gpio = TEGRA_GPIO_PS7,
-	.firm_gpio = TEGRA_GPIO_PR3,
-};
-
-static struct i2c_board_info __initdata kai_nfc_board_info[] = {
-	{
-		I2C_BOARD_INFO("pn544", 0x28),
-		.platform_data = &nfc_pdata,
-		.irq = TEGRA_GPIO_TO_IRQ(TEGRA_GPIO_PX0),
-	},
 };
 
 static struct tegra_i2c_platform_data kai_i2c1_platform_data = {
@@ -266,39 +252,10 @@ static struct tegra_i2c_platform_data kai_i2c5_platform_data = {
 	.arb_recovery = arb_lost_recovery,
 };
 
-struct max17048_battery_model max17048_mdata = {
-	.rcomp          = 170,
-	.soccheck_A     = 252,
-	.soccheck_B     = 254,
-	.bits           = 19,
-	.alert_threshold = 0x00,
-	.one_percent_alerts = 0x40,
-	.alert_on_reset = 0x40,
-	.rcomp_seg      = 0x0800,
-	.hibernate      = 0x3080,
-	.vreset         = 0x9696,
-	.valert         = 0xD4AA,
-	.ocvtest        = 55600,
-};
-
-
-static struct at24_platform_data eeprom_info = {
-	.byte_len	= (256*1024)/8,
-	.page_size	= 64,
-	.flags		= AT24_FLAG_ADDR16,
-	.setup		= get_mac_addr,
-};
-
-static struct i2c_board_info kai_i2c4_max17048_board_info[] = {
+static struct i2c_board_info kai_i2c4_bq27541_board_info[] = {
 	{
-		I2C_BOARD_INFO("max17048", 0x36),
-		.platform_data = &max17048_mdata,
+		I2C_BOARD_INFO("bq27541", 0x55),
 	},
-};
-
-static struct i2c_board_info kai_eeprom_mac_add = {
-	I2C_BOARD_INFO("at24", 0x56),
-	.platform_data = &eeprom_info,
 };
 
 static struct regulator_consumer_supply smb349_vbus_supply[] = {
@@ -310,12 +267,18 @@ static struct regulator_consumer_supply smb349_otg_vbus_supply[] = {
 };
 
 static struct smb349_charger_platform_data smb349_charger_pdata = {
-	.max_charge_current_mA = 1000,
-	.charging_term_current_mA = 100,
+	.max_charge_current_mA = 2000,
+	.charging_term_current_mA = 200,
 	.consumer_supplies = smb349_vbus_supply,
 	.num_consumer_supplies = ARRAY_SIZE(smb349_vbus_supply),
 	.otg_consumer_supplies = smb349_otg_vbus_supply,
 	.num_otg_consumer_supplies = ARRAY_SIZE(smb349_otg_vbus_supply),
+        .stat_gpio = MAX77663_GPIO_BASE + MAX77663_GPIO1,
+        .irq_gpio = MAX77663_IRQ_BASE + MAX77663_IRQ_GPIO1,
+        .configuration_data = {0x6A/*0x00*//*input current*/, 0x40/*taper current*/, 0xFF, 0xFF, 0x38/*recharge current=100mA*/, 0x06 /*500mA for other charger*/, 0xFF, 0x40/*min system voltage and termal enable*/, 
+                                                  0xFF, 0xFF/*OTG active low: 0x20*/, 0xFF, 0x4E,//0x8E/*temperature monitor:0~50*/ 
+                                                  0x80, 0x98, /*<-- interrupt mask*/
+                                                  0xFF, 0xFF, 0x0F/*low battery threshold:3.58*/},
 };
 
 static struct i2c_board_info kai_i2c4_smb349_board_info[] = {
@@ -325,14 +288,20 @@ static struct i2c_board_info kai_i2c4_smb349_board_info[] = {
 	},
 };
 
-static struct i2c_board_info __initdata rt5640_board_info = {
-	I2C_BOARD_INFO("rt5640", 0x1c),
-	.irq = TEGRA_GPIO_TO_IRQ(TEGRA_GPIO_CDC_IRQ),
+static struct aic326x_pdata kai_aic326x_pdata = {
+	.debounce_time_ms = 512,
+        .cspin = TEGRA_CODEC_SPI_CS,
 };
 
-static struct i2c_board_info __initdata rt5639_board_info = {
-	I2C_BOARD_INFO("rt5639", 0x1c),
-	.irq = TEGRA_GPIO_TO_IRQ(TEGRA_GPIO_CDC_IRQ),
+static struct spi_board_info __initdata aic326x_spi_board_info[] = {
+	{
+		.modalias = "aic3262-codec",
+		.bus_num = 0,
+		.chip_select = 1,
+		.mode = SPI_MODE_1,
+		.max_speed_hz = 4000000,
+		.platform_data = &kai_aic326x_pdata,
+	},
 };
 
 static void kai_i2c_init(void)
@@ -355,18 +324,8 @@ static void kai_i2c_init(void)
 
 	i2c_register_board_info(4, kai_i2c4_smb349_board_info,
 		ARRAY_SIZE(kai_i2c4_smb349_board_info));
-
-	if (board_info.fab == BOARD_FAB_A00)
-		i2c_register_board_info(4, &rt5640_board_info, 1);
-	else
-		i2c_register_board_info(4, &rt5639_board_info, 1);
-
-	i2c_register_board_info(4, &kai_eeprom_mac_add, 1);
-
-	i2c_register_board_info(4, kai_i2c4_max17048_board_info,
-		ARRAY_SIZE(kai_i2c4_max17048_board_info));
-
-	i2c_register_board_info(0, kai_nfc_board_info, 1);
+	i2c_register_board_info(4, kai_i2c4_bq27541_board_info,
+		ARRAY_SIZE(kai_i2c4_bq27541_board_info));
 }
 
 static struct platform_device *kai_uart_devices[] __initdata = {
@@ -525,10 +484,10 @@ static struct spi_clk_parent spi_parent_clk[] = {
 };
 
 static struct tegra_spi_platform_data kai_spi1_pdata = {
-		.is_dma_based           = true,
-		.max_dma_buffer         = (128),
-		.is_clkon_always        = false,
-		.max_rate               = 100000000,
+	.is_dma_based		= true,
+	.max_dma_buffer		= (16 * 1024),
+	.is_clkon_always	= true,
+	.max_rate		= 100000000,
 };
 
 static void __init kai_spi_init(void)
@@ -553,6 +512,8 @@ static void __init kai_spi_init(void)
 	platform_add_devices(kai_spi_devices,
 				ARRAY_SIZE(kai_spi_devices));
 
+	/*register TI AIC326x codec on SPI bus*/
+	spi_register_board_info(aic326x_spi_board_info, ARRAY_SIZE(aic326x_spi_board_info));
 }
 
 static struct resource tegra_rtc_resources[] = {
@@ -575,32 +536,19 @@ static struct platform_device tegra_rtc_device = {
 	.num_resources = ARRAY_SIZE(tegra_rtc_resources),
 };
 
-static struct tegra_asoc_platform_data kai_audio_pdata = {
-	.gpio_spkr_en		= TEGRA_GPIO_SPKR_EN,
-	.gpio_hp_det		= TEGRA_GPIO_HP_DET,
-	.gpio_hp_mute		= -1,
-	.gpio_int_mic_en	= TEGRA_GPIO_INT_MIC_EN,
-	.gpio_ext_mic_en	= TEGRA_GPIO_EXT_MIC_EN,
-		.i2s_param[HIFI_CODEC]	= {
-		.audio_port_id	= 0,
-		.is_i2s_master	= 1,
-		.i2s_mode	= TEGRA_DAIFMT_I2S,
-	},
-	.i2s_param[BASEBAND]	= {
-		.audio_port_id	= -1,
-	},
-	.i2s_param[BT_SCO]	= {
-		.audio_port_id	= 3,
-		.is_i2s_master	= 1,
-		.i2s_mode	= TEGRA_DAIFMT_DSP_A,
-	},
+static struct tegra_asoc_platform_data kai_audio_device_aic326x_platform_data ={
+	.gpio_spkr_en = -1,
+	.gpio_hp_det = TEGRA_GPIO_HP_DET,
+	.gpio_hp_mute = -1,
+	.gpio_int_mic_en = -1,
+	.gpio_ext_mic_en = -1,
 };
 
-static struct platform_device kai_audio_device = {
-	.name	= "tegra-snd-rt5640",
+static struct platform_device kai_audio_device_aic326x = {
+	.name	= "tegra-snd-aic326x",
 	.id	= 0,
 	.dev	= {
-		.platform_data = &kai_audio_pdata,
+	.platform_data  = &kai_audio_device_aic326x_platform_data,
 	},
 };
 
@@ -656,73 +604,15 @@ static struct platform_device *kai_devices[] __initdata = {
 	&spdif_dit_device,
 	&bluetooth_dit_device,
 	&tegra_pcm_device,
-	&kai_audio_device,
+	//&kai_audio_device, /*remove temporarily for Foxconn*/
+	&kai_audio_device_aic326x, //CL2N+
 	&kai_leds_gpio_device,
 	&tegra_hda_device,
 #if defined(CONFIG_CRYPTO_DEV_TEGRA_AES)
 	&tegra_aes_device,
 #endif
+	&cardhu_bt_rfkill_device
 };
-
-static __initdata struct tegra_clk_init_table spi_clk_init_table[] = {
-	/* name         parent          rate            enabled */
-	{ "sbc1",       "pll_p",        52000000,       true},
-	{ NULL,         NULL,           0,              0},
-};
-
-static __initdata struct tegra_clk_init_table touch_clk_init_table[] = {
-	/* name         parent          rate            enabled */
-	{ "extern3",    "pll_p",        41000000,       true},
-	{ "clk_out_3",  "extern3",      40800000,       true},
-	{ NULL,         NULL,           0,              0},
-};
-
-static int __init kai_touch_init(void)
-{
-	int touch_id;
-
-	gpio_request(KAI_TS_ID1, "touch-id1");
-	gpio_direction_input(KAI_TS_ID1);
-
-	gpio_request(KAI_TS_ID2, "touch-id2");
-	gpio_direction_input(KAI_TS_ID2);
-
-	touch_id = gpio_get_value(KAI_TS_ID1) << 1;
-	touch_id |= gpio_get_value(KAI_TS_ID2);
-
-	pr_info("touch-id %d\n", touch_id);
-
-	/* Disable TS_ID GPIO to save power */
-	gpio_direction_output(KAI_TS_ID1, 0);
-	tegra_pinmux_set_pullupdown(KAI_TS_ID1_PG, TEGRA_PUPD_NORMAL);
-	tegra_pinmux_set_tristate(KAI_TS_ID1_PG, TEGRA_TRI_TRISTATE);
-	gpio_direction_output(KAI_TS_ID2, 0);
-	tegra_pinmux_set_pullupdown(KAI_TS_ID2_PG, TEGRA_PUPD_NORMAL);
-	tegra_pinmux_set_tristate(KAI_TS_ID2_PG, TEGRA_TRI_TRISTATE);
-
-	switch (touch_id) {
-	case 0:
-		pr_info("Raydium PCB based touch init\n");
-		tegra_clk_init_from_table(spi_clk_init_table);
-		touch_init_raydium(TEGRA_GPIO_PZ3, TEGRA_GPIO_PN5, 0);
-		break;
-	case 1:
-		pr_info("Raydium On-Board touch init\n");
-		tegra_clk_init_from_table(spi_clk_init_table);
-		tegra_clk_init_from_table(touch_clk_init_table);
-		clk_enable(tegra_get_clock_by_name("clk_out_3"));
-
-		touch_init_raydium(TEGRA_GPIO_PZ3, TEGRA_GPIO_PN5, 1);
-		break;
-	case 3:
-		pr_info("Synaptics PCB based touch init\n");
-		touch_init_synaptics_kai();
-		break;
-	default:
-		pr_err("touch_id error, no touch %d\n", touch_id);
-	}
-	return 0;
-}
 
 static struct tegra_usb_platform_data tegra_udc_pdata = {
 	.port_otg = true,
@@ -773,6 +663,39 @@ static struct tegra_usb_platform_data tegra_ehci1_utmi_pdata = {
 	},
 };
 
+static struct ft5x0x_platform_data ft5x06_ts_info = {
+	.x_max = 1280,
+	.y_max = 800,
+	.irqflags = IRQF_TRIGGER_FALLING,
+	.reset = TEGRA_GPIO_PH5,
+};
+
+static struct i2c_board_info __initdata ft5x06_i2c_info[] = {
+	{
+		I2C_BOARD_INFO(FT5X0X_NAME, 0x38),
+		.irq = TEGRA_GPIO_TO_IRQ(TEGRA_GPIO_PH4),
+		.platform_data = &ft5x06_ts_info,
+	}
+};
+
+static int __init touch_init_ft5x06_kai(void)
+{
+	pr_debug("%s\n", __func__);
+
+	tegra_gpio_enable(TEGRA_GPIO_PH4);
+	tegra_gpio_enable(TEGRA_GPIO_PH5);
+
+	gpio_request(TEGRA_GPIO_PH4, "ft5x0x-irq");
+	gpio_direction_input(TEGRA_GPIO_PH4);
+	i2c_register_board_info(1, ft5x06_i2c_info, 1);
+
+	return 0;
+}
+
+static int __init kai_touch_init(void)
+{
+	return touch_init_ft5x06_kai();
+}
 
 static struct tegra_usb_platform_data tegra_ehci2_utmi_pdata = {
 	.port_otg = false,
@@ -852,21 +775,6 @@ static void kai_usb_init(void) { }
 static void kai_modem_init(void) { }
 #endif
 
-static void kai_audio_init(void)
-{
-	struct board_info board_info;
-
-	tegra_get_board_info(&board_info);
-
-	if (board_info.fab == BOARD_FAB_A01) {
-		kai_audio_pdata.codec_name = "rt5639.4-001c";
-		kai_audio_pdata.codec_dai_name = "rt5639-aif1";
-	} else if (board_info.fab == BOARD_FAB_A00) {
-		kai_audio_pdata.codec_name = "rt5640.4-001c";
-		kai_audio_pdata.codec_dai_name = "rt5640-aif1";
-	}
-}
-
 static void __init tegra_kai_init(void)
 {
 	tegra_thermal_init(&thermal_data,
@@ -881,7 +789,7 @@ static void __init tegra_kai_init(void)
 	kai_edp_init();
 #endif
 	kai_uart_init();
-	kai_audio_init();
+	kai_tsensor_init();
 	platform_add_devices(kai_devices, ARRAY_SIZE(kai_devices));
 	tegra_ram_console_debug_init();
 	tegra_io_dpd_init();
@@ -891,8 +799,7 @@ static void __init tegra_kai_init(void)
 	kai_touch_init();
 	kai_keys_init();
 	kai_panel_init();
-	kai_tegra_setup_tibluesleep();
-	kai_bt_st();
+	cardhu_setup_bluesleep();
 	kai_sensors_init();
 	kai_pins_state_init();
 	kai_emc_init();

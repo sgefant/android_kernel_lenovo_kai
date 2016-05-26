@@ -27,10 +27,20 @@
 
 #include <linux/mfd/max77663-core.h>
 
+//&*&*&*HC1_20120514
+#include <linux/earlysuspend.h>
+//&*&*&*HC2_20120514
+
+//&*&*&*AL1_20120607
+#include <linux/smb349-charger.h>
+//&*&*&*AL2_20120607
+
 /* RTC i2c slave address */
 #define MAX77663_RTC_I2C_ADDR		0x48
 
 /* Registers */
+#define MAX77663_REG_CNFG1_32K	0x03
+#define MAX77663_REG_CNFGBBC		0x04
 #define MAX77663_REG_IRQ_TOP		0x05
 #define MAX77663_REG_LBT_IRQ		0x06
 #define MAX77663_REG_SD_IRQ		0x07
@@ -45,6 +55,7 @@
 #define MAX77663_REG_LDOX_IRQ_MASK	0x10
 #define MAX77663_REG_LDO8_IRQ_MASK	0x11
 #define MAX77663_REG_ONOFF_IRQ_MASK	0x12
+#define MAX77663_REG_ONOFF_CTRL_STAT	0x15
 #define MAX77663_REG_GPIO_CTRL0		0x36
 #define MAX77663_REG_GPIO_CTRL1		0x37
 #define MAX77663_REG_GPIO_CTRL2		0x38
@@ -87,6 +98,8 @@
 #define IRQ_ONOFF_BASE			MAX77663_IRQ_ONOFF_HRDPOWRN
 #define IRQ_ONOFF_END			MAX77663_IRQ_ONOFF_ACOK_RISING
 
+#define ONOFF_STAT_ACOK_MASK	(1 << 1)
+
 #define GPIO_REG_ADDR(offset)		(MAX77663_REG_GPIO_CTRL0 + offset)
 
 #define GPIO_CTRL_DBNC_MASK		(3 << 6)
@@ -117,8 +130,16 @@
 #define ONOFF_PWR_OFF_MASK		(1 << 1)
 
 #define ONOFF_SLP_LPM_MASK		(1 << 5)
-
+#define ONOFF_WK_ALARM0_MASK		(1 << 2)
+#define ONOFF_WK_ALARM1_MASK		(1 << 1)
 #define ONOFF_IRQ_EN0_RISING		(1 << 3)
+
+#define CNFG1_32K_32KLOAD_MASK		(3 << 4)
+#define CNFG1_32K_12PF_PER_NODE		(0 << 4)
+#define CNFG1_32K_22PF_PER_NODE		(1 << 4)
+#define CNFG1_32K_NO_INTERNAL_LOAD	(2 << 4)
+#define CNFG1_32K_10PF_PER_NODE		(3 << 4)
+#define CNFGBBC_BBCCS_MASK		(3 << 1)
 
 enum {
 	CACHE_IRQ_LBT,
@@ -162,6 +183,18 @@ struct max77663_chip {
 	u8 cache_gpio_alt;
 
 	u8 rtc_i2c_addr;
+//&*&*&*HC1_20120514
+	#ifdef CONFIG_CL2N_WAKEUP_CABLE
+	#ifdef CONFIG_HAS_EARLYSUSPEND
+	struct early_suspend		early_suspend;
+	#endif
+	int enter_early_suspend;
+	int wakeup_event;
+	//&*&*&*AL1_20120613
+	int is_otg_cable;
+	//&*&*&*AL2_20120613
+	#endif
+//&*&*&*HC2_20120514
 };
 
 struct max77663_chip *max77663_chip;
@@ -377,9 +410,38 @@ EXPORT_SYMBOL(max77663_set_bits);
 static void max77663_power_off(void)
 {
 	struct max77663_chip *chip = max77663_chip;
+	//CL2N+
+	u8 onoff_ctrl_st;
+	int ret;
+	//CL2N-
 
 	if (!chip)
 		return;
+
+//&*&*&*HC1_20120521
+	ret = max77663_read(chip->dev, MAX77663_REG_ONOFF_CTRL_STAT, &onoff_ctrl_st, 1, 0);
+	if (ret < 0) {
+		dev_err(chip->dev, "irq: Failed to get onoff controller status\n");
+	}
+
+	if (onoff_ctrl_st & 0x2) {
+		max77663_set_bits(chip->dev, MAX77663_REG_ONOFF_CFG2,
+					ONOFF_SFT_RST_MASK, ONOFF_SFT_RST_MASK, 0);
+		printk("ONOFF_SFT_RST high ...\n");
+
+		// set CNFGBBC_BBCCS to 0b11 for off mode charging
+		max77663_set_bits(chip->dev, MAX77663_REG_CNFGBBC,
+					CNFGBBC_BBCCS_MASK, CNFGBBC_BBCCS_MASK, 0);		
+
+	} else {
+		max77663_set_bits(chip->dev, MAX77663_REG_ONOFF_CFG2,
+					ONOFF_SFT_RST_MASK, 0, 0);
+		printk("ONOFF_SFT_RST low ...\n");
+
+		max77663_set_bits(chip->dev, MAX77663_REG_CNFGBBC,
+					CNFGBBC_BBCCS_MASK, 0, 0);
+	}
+//&*&*&*HC2_20120521	
 
 	dev_info(chip->dev, "%s: Global shutdown\n", __func__);
 	max77663_set_bits(chip->dev, MAX77663_REG_ONOFF_CFG1,
@@ -600,6 +662,35 @@ static int max77663_gpio_to_irq(struct gpio_chip *gpio, unsigned offset)
 
 	return chip->irq_base + IRQ_GPIO_BASE + offset;
 }
+
+//&*&*&*AL2_20120613
+#ifdef MAX77663_CALLBACK_FUNCTION
+static void max77663_low_battery_alert(void *data)
+{	
+	struct max77663_chip *chip = (struct max77663_chip *)data;	
+	printk("[max77663-core]enter %s.\n", __func__);
+
+	#ifdef CONFIG_CL2N_WAKEUP_CABLE
+	if (chip->enter_early_suspend == 1 && chip->wakeup_event == 0) {
+		printk("[max77663-core]send power key event.\n", __func__);
+		SendPowerbuttonEvent();
+		chip->wakeup_event = 1;
+	}
+	#endif
+}
+void max77663_OTG_alert(void *data)
+{
+	printk("[max77663-core]enter %s.\n", __func__);
+	if(max77663_chip == NULL )
+		return;
+	
+	#ifdef CONFIG_CL2N_WAKEUP_CABLE
+	max77663_chip->is_otg_cable = *((int *)data);
+	#endif
+}
+EXPORT_SYMBOL_GPL(max77663_OTG_alert);
+#endif
+//&*&*&*AL2_20120613
 
 #ifdef CONFIG_DEBUG_FS
 static void max77663_gpio_dbg_show(struct seq_file *s, struct gpio_chip *gpio)
@@ -1044,6 +1135,49 @@ static irqreturn_t max77663_irq(int irq, void *data)
 	return IRQ_HANDLED;
 }
 
+//&*&*&*HC1_20120514
+static irqreturn_t max77663_acok_irq(int irq, void *data)
+{
+	struct max77663_chip *chip = data;
+	u8 onoff_ctrl_st;
+	int ret;
+
+	ret = max77663_read(chip->dev, MAX77663_REG_ONOFF_CTRL_STAT, &onoff_ctrl_st, 1, 0);
+	if (ret < 0) {
+		dev_err(chip->dev, "irq: Failed to get onoff controller status\n");
+		return IRQ_NONE;
+	}
+	//&*&*&*AL2_20120620
+	#ifdef CONFIG_CL2N_WAKEUP_CABLE
+	if(chip->is_otg_cable)
+	{
+		printk("%s, OTG cable [%s]\n", __func__, onoff_ctrl_st&ONOFF_STAT_ACOK_MASK? "IN":"OUT");
+		g_cable_wk_irq = 1; 
+		if(!(onoff_ctrl_st&ONOFF_STAT_ACOK_MASK))
+		{
+			chip->is_otg_cable = 0;
+			//g_cable_wk_irq = 0; 
+		}
+	}
+	else
+	{
+		printk("%s, AC/USB cable [%s]\n", __func__, onoff_ctrl_st&ONOFF_STAT_ACOK_MASK? "IN":"OUT");
+
+	//&*&*&*HC1_20120609
+		if (chip->enter_early_suspend == 1 && chip->wakeup_event == 0 /*&& g_cable_wk_irq == 0 && !chip->is_otg_cable*/) {
+			g_cable_wk_irq = 1; 
+			SendPowerbuttonEvent();
+			chip->wakeup_event = 1;
+		}
+	}
+	#endif
+	//&*&*&*HC2_20120609
+	//&*&*&*AL2_20120620
+	
+	return IRQ_HANDLED;
+}
+//&*&*&*HC2_20120514
+
 static struct irq_chip max77663_irq_gpio_chip = {
 	.name = "max77663-irq",
 	.irq_mask = max77663_irq_mask,
@@ -1290,6 +1424,38 @@ static inline void max77663_debugfs_exit(struct max77663_chip *chip)
 }
 #endif /* CONFIG_DEBUG_FS */
 
+//&*&*&*HC1_20120514
+#ifdef CONFIG_CL2N_WAKEUP_CABLE
+#ifdef CONFIG_HAS_EARLYSUSPEND
+static void max77663_early_suspend(struct early_suspend *handler)
+{
+	struct max77663_chip *chip;
+
+	printk("Enter %s.\n", __func__);
+	chip = container_of(handler, struct max77663_chip, early_suspend);
+	chip->enter_early_suspend = 1;
+	//&*&*&*AL2_20120607
+	#ifdef MAX77663_CALLBACK_FUNCTION
+	register_max77663_callback(max77663_low_battery_alert, chip, SMB349_LOW_BATTERY);
+	register_max77663_callback(max77663_OTG_alert, &chip->is_otg_cable, SMB349_OTG_CABLE);
+	#endif
+	//&*&*&*AL2_20120607
+}
+
+static void max77663_late_resume(struct early_suspend *handler)
+{
+	struct max77663_chip *chip;
+
+	printk("Enter %s.\n", __func__);
+	chip = container_of(handler, struct max77663_chip, early_suspend);
+	chip->enter_early_suspend = 0;
+	chip->wakeup_event = 0;
+	g_cable_wk_irq = 0; ////&*&*&*HC_20120609
+}
+#endif
+#endif
+//&*&*&*HC2_20120514
+
 static int max77663_probe(struct i2c_client *client,
 			  const struct i2c_device_id *id)
 {
@@ -1328,6 +1494,17 @@ static int max77663_probe(struct i2c_client *client,
 	chip->gpio_base = pdata->gpio_base;
 	mutex_init(&chip->io_lock);
 
+//&*&*&*HC1_20120514
+	#ifdef CONFIG_CL2N_WAKEUP_CABLE
+	chip->wakeup_event = 0;
+	#ifdef CONFIG_HAS_EARLYSUSPEND
+	chip->early_suspend.suspend = max77663_early_suspend;
+	chip->early_suspend.resume = max77663_late_resume;
+	register_early_suspend(&chip->early_suspend);
+	#endif
+	#endif
+//&*&*&*HC2_20120514
+
 	max77663_gpio_init(chip);
 	max77663_irq_init(chip);
 	max77663_debugfs_init(chip);
@@ -1336,6 +1513,28 @@ static int max77663_probe(struct i2c_client *client,
 		dev_err(&client->dev, "probe: Failed to disable sleep\n");
 		goto out_exit;
 	}
+
+//&*&*&*HC1_20120516
+	// disable alarm0 and alarm1 wakeup source (power on condition)
+	ret = max77663_set_bits(chip->dev, MAX77663_REG_ONOFF_CFG2,
+				ONOFF_WK_ALARM1_MASK|ONOFF_WK_ALARM0_MASK, 0, 0);
+	if (ret < 0) {
+		dev_err(chip->dev, "probe: Failed to set onoff cfg2\n");
+		goto out_exit;
+	}
+//&*&*&*HC2_20120516
+
+//&*&*&*HC1_20120629, select 22pF
+//&*&*&*HC1_20120528, select 12pF
+	// select 22pF for 32K oscillator
+	ret = max77663_set_bits(chip->dev, MAX77663_REG_CNFG1_32K,
+				CNFG1_32K_32KLOAD_MASK, CNFG1_32K_22PF_PER_NODE, 0);
+	if (ret < 0) {
+		dev_err(chip->dev, "probe: Failed to set cfg1 32k\n");
+		goto out_exit;
+	}
+//&*&*&*HC2_20120528, select 12pF
+//&*&*&*HC2_20120629, select 22pF
 
 	if (pdata->use_power_off && !pm_power_off)
 		pm_power_off = max77663_power_off;
@@ -1346,6 +1545,23 @@ static int max77663_probe(struct i2c_client *client,
 		dev_err(&client->dev, "probe: Failed to add subdev: %d\n", ret);
 		goto out_exit;
 	}
+	
+//&*&*&*HC1_20120518	
+//&*&*&*HC1_20120514
+	ret = request_threaded_irq(chip->irq_base+MAX77663_IRQ_ONOFF_ACOK_RISING, NULL, max77663_acok_irq,
+				   IRQF_TRIGGER_RISING, "max77663-acok", chip);
+	if (ret < 0) {
+		dev_err(chip->dev, "probe: Failed to request irq %d\n",
+			chip->irq_base+MAX77663_IRQ_ONOFF_ACOK_RISING);
+	}
+//&*&*&*HC2_20120514
+	ret = request_threaded_irq(chip->irq_base+MAX77663_IRQ_ONOFF_ACOK_FALLING, NULL, max77663_acok_irq,
+				   IRQF_TRIGGER_FALLING, "max77663-acok", chip);
+	if (ret < 0) {
+		dev_err(chip->dev, "probe: Failed to request irq %d\n",
+			chip->irq_base+MAX77663_IRQ_ONOFF_ACOK_FALLING);
+	}
+//&*&*&*HC2_20120518
 
 	return 0;
 
