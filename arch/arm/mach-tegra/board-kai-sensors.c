@@ -38,8 +38,6 @@
 #define CAM2_RST_GPIO			TEGRA_GPIO_PBB4
 #define CAM2_POWER_DWN_GPIO		TEGRA_GPIO_PBB6
 
-#define CAM_MCLK_EN_GPIO		TEGRA_GPIO_PCC0
-
 #define CAM1_LDO_GPIO	TEGRA_GPIO_PR6
 #define CAM2_LDO_GPIO	TEGRA_GPIO_PR7
 #define CAM_VDD_GPIO	TEGRA_GPIO_PS0
@@ -177,14 +175,6 @@ static int kai_camera_init(void)
 	gpio_direction_output(CAM2_LDO_GPIO,0);
 	gpio_direction_output(CAM_VDD_GPIO,0);
 
-	ret = gpio_request(CAM_MCLK_EN_GPIO, "mclk_disable");
-	if (ret < 0)
-	{
-			pr_err("CAM_MCLK_EN_GPIO gpio_request failed\n");
-			goto fail_mclk_gpio;
-	}
-	gpio_direction_output(CAM_MCLK_EN_GPIO,0);
-	gpio_set_value(CAM_MCLK_EN_GPIO, 0);
 	gpio_direction_output(CAM1_POWER_DWN_GPIO,0);
 	gpio_set_value(CAM1_POWER_DWN_GPIO, 0);
 	return 0;
@@ -193,9 +183,6 @@ fail_free_gpio:
 	pr_err("%s failed!", __func__);
 	while(i--)
 		gpio_free(kai_cam_gpio_data[i].gpio);
-	return ret;
-fail_mclk_gpio:
-	gpio_free(CAM_MCLK_EN_GPIO);
 	return ret;
 fail_vdd_gpio:
 	gpio_free(CAM_VDD_GPIO);
@@ -211,18 +198,8 @@ fail_cam2_gpio:
 
 static int kai_s5k5cag_power_on(int delay_time)
 {
-	int ret = 0;
-
 	struct kai_cam_power_rail *cam_pwr = &kai_cam_pwr[CAM_REAR];
 	printk("[Jimmy][camera](%s) \n",__FUNCTION__);
-
-	msleep(1);
-
-	ret = gpio_request(CAM_MCLK_EN_GPIO, "mclk_disable");
-	if (ret < 0)
-	{
-			gpio_free(CAM_MCLK_EN_GPIO);
-	}
 
 	msleep(10);
 
@@ -240,10 +217,6 @@ static int kai_s5k5cag_power_off(void)
 	printk("[Jimmy][camera](%s) \n",__FUNCTION__);
 
 	gpio_set_value(cam_pwr->gpio_pwdn->gpio, cam_pwr->gpio_pwdn->active_high);//pwdn_3M high
-
-	msleep(10);
-
-	gpio_set_value(CAM_MCLK_EN_GPIO, 0);//gpio -> low
 
 	msleep(20);
 
@@ -264,10 +237,6 @@ static int kai_s5k5cag_suspend(void)
 
 	msleep(1);
 
-	gpio_direction_output(CAM_MCLK_EN_GPIO,0);//clk->gpio
-
-	gpio_set_value(CAM_MCLK_EN_GPIO, 0);//gpio -> low
-
 	gpio_set_value(CAM_VDD_GPIO, 0);//1.8v low
 
 	gpio_set_value(CAM1_LDO_GPIO, 0);//2.8v_3M low
@@ -281,21 +250,12 @@ static int kai_s5k5cag_suspend(void)
 
 static int kai_mt9m114_power_on(int delay_time)
 {
-	int ret = 0;
 	struct kai_cam_power_rail *cam_pwr = &kai_cam_pwr[CAM_FRONT];
 	printk("[Jimmy][camera](%s) \n",__FUNCTION__);
 
 	gpio_set_value(cam_pwr->gpio_pwdn->gpio, !cam_pwr->gpio_pwdn->active_high);//pwdn_1.3M low
 
 	gpio_set_value(CAM2_LDO_GPIO, 1);//2.8v_1.3M high
-
-	msleep(1);
-
-	ret = gpio_request(CAM_MCLK_EN_GPIO, "mclk_disable");
-	if (ret < 0)
-	{
-			gpio_free(CAM_MCLK_EN_GPIO);
-	}
 
 	msleep(10);
 
@@ -326,8 +286,6 @@ static int kai_mt9m114_power_off(void)
 	gpio_set_value(cam_pwr->gpio_rst->gpio, cam_pwr->gpio_rst->active_high);//rst_1.3M low
 
 	msleep(1);
-
-	gpio_set_value(CAM_MCLK_EN_GPIO, 0);//gpio -> low
 
 	gpio_set_value(CAM2_LDO_GPIO, 0);//2.8v_1.3M low
 
