@@ -5279,8 +5279,6 @@ static int __devinit aic3262_spi_probe(struct spi_device *spi)
 	if(gpio_request(pdata->cspin, "SPI_CS_SELECT") < 0) {
 		printk("Failed to request SPI_CS_SELECT 0x%x\n", pdata->cspin);
 		return -1;
-	} else {
-		tegra_gpio_enable(pdata->cspin);
 	}
 	spi_set_drvdata(spi, aic3262);
 
