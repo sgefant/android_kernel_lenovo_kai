@@ -44,14 +44,6 @@
 #include "tegra3_host1x_devices.h"
 
 /* kai default display board pins */
-/* SNN_LCD1_BL_EN TEGRA_GPIO_PH2 NC */
-#define kai_vdd_lvds_enb		TEGRA_GPIO_PW1 /* 3.EN_VDD_PNL */
-#define kai_bl_pwm			TEGRA_GPIO_PH0 /* 4.LCD1_BL_PWM */
-#define kai_lvds_mode0			TEGRA_GPIO_PG2 /* 5.LCD_MODE0 */
-#define kai_lvds_mode1			TEGRA_GPIO_PG3 /* 6.LCD_MODE1 */
-#define kai_lvds_bpp			TEGRA_GPIO_PG6 /* 7.BPP (Low:24bpp, High:18bpp) */
-#define kai_lvds_ud			TEGRA_GPIO_PG0 /* 8.LCD_UD */
-#define kai_lvds_stdby_evt			TEGRA_GPIO_PG5 /* 10.STBY */
 #define kai_lvds_avdd_en		TEGRA_GPIO_PH6 /* 13.LCD_AVDD_EN */
 #define kai_lvds_stdby			TEGRA_GPIO_PH2 /* 10.STBY */
 #define kai_lvds_rst			TEGRA_GPIO_PG7 /* 11.RESET* */
@@ -59,12 +51,19 @@
 #define kai_lvds_rs			TEGRA_GPIO_PV6 /* 12.LVDS swing mode, 0=200mV, 1=350mV */
 #define kai_lvds_lr			TEGRA_GPIO_PG1 /* 9.LCD_LR */
 
+#define kai_vdd_lvds_enb		TEGRA_GPIO_PW1 /* 3.EN_VDD_PNL */
+#define kai_lvds_mode0			TEGRA_GPIO_PG2 /* 5.LCD_MODE0 */
+#define kai_lvds_mode1			TEGRA_GPIO_PG3 /* 6.LCD_MODE1 */
+#define kai_lvds_bpp			TEGRA_GPIO_PG6 /* 7.BPP (Low:24bpp, High:18bpp) */
+#define kai_lvds_ud			TEGRA_GPIO_PG0 /* 8.LCD_UD */
+#define kai_lvds_stdby_evt		TEGRA_GPIO_PG5 /* 10.STBY */
+
 /* kai A00 display board pins */
 #define kai_lvds_rs_a00		TEGRA_GPIO_PH1
 
 /* common pins( backlight ) for all display boards */
 #define kai_bl_enb			TEGRA_GPIO_PH3 /* 1.EN_VDD_BL1 */
-#define kai_bl_pwm			TEGRA_GPIO_PH0
+#define kai_bl_pwm			TEGRA_GPIO_PH0 /* 4.LCD1_BL_PWM */
 #define kai_hdmi_hpd			TEGRA_GPIO_PN7
 
 #ifdef CONFIG_TEGRA_DC
@@ -72,8 +71,6 @@ static struct regulator *kai_hdmi_reg;
 static struct regulator *kai_hdmi_pll;
 static struct regulator *kai_hdmi_vddio;
 #endif
-
-int cl2n_panel_status;  /*20120607, jimmySu add to judge display status */
 
 static atomic_t sd_brightness = ATOMIC_INIT(255);
 
@@ -155,8 +152,6 @@ static tegra_dc_bl_output kai_mppvt_bl_output_measured = {
 
 static p_tegra_dc_bl_output bl_output;
 
-static struct clk *emc_clk_lock;
-
 static int kai_backlight_init(struct device *dev)
 {
 	int ret;
@@ -236,13 +231,6 @@ static struct platform_device kai_backlight_device = {
 
 static int kai_panel_postpoweron(void)
 {
-	if (emc_clk_lock) {
-		clk_set_rate(emc_clk_lock, 204000000/*102000000*/);
-		clk_enable(emc_clk_lock);
-	}
-
-	cl2n_panel_status = 1; /*20120607, jimmySu add to judge display status */
-
 	if (kai_lvds_reg == NULL) {
 		kai_lvds_reg = regulator_get(NULL, "vdd_lvds");
 		if (WARN_ON(IS_ERR(kai_lvds_reg)))
@@ -288,12 +276,6 @@ static int kai_panel_enable(void)
 
 static int kai_panel_disable(void)
 {
-	cl2n_panel_status = 0;
-
-	if (emc_clk_lock) {
-		clk_disable(emc_clk_lock);
-	}
-
 	regulator_disable(kai_lvds_vdd_panel);
 	regulator_put(kai_lvds_vdd_panel);
 	kai_lvds_vdd_panel = NULL;
@@ -788,8 +770,6 @@ int __init kai_panel_init(void)
 
 	gpio_request(kai_hdmi_hpd, "hdmi_hpd");
 	gpio_direction_input(kai_hdmi_hpd);
-
-	emc_clk_lock = clk_get_sys("floor.emc", NULL);
 
 #ifdef CONFIG_HAS_EARLYSUSPEND
 	kai_panel_early_suspender.suspend = kai_panel_early_suspend;
