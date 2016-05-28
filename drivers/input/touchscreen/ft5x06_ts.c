@@ -265,12 +265,10 @@ static void ft5x0x_ts_suspend(struct early_suspend *handler)
 	gpio_set_value(ts->pdata->reset, 0);
 
 /*++++20120606 JimmySu add for touch power consumption*/
-	tegra_gpio_enable(TEGRA_GPIO_PT5);
 	gpio_request(TEGRA_GPIO_PT5, "ft5x0x-i2c-scl-sleep");
 	gpio_direction_output(TEGRA_GPIO_PT5, 0);
 	gpio_set_value(TEGRA_GPIO_PT5, 0);
 
-	tegra_gpio_enable(TEGRA_GPIO_PT6);
 	gpio_request(TEGRA_GPIO_PT6, "ft5x0x-i2c-sda-sleep");
 	gpio_direction_output(TEGRA_GPIO_PT6, 0);
 	gpio_set_value(TEGRA_GPIO_PT6, 0);
@@ -286,8 +284,8 @@ static void ft5x0x_ts_resume(struct early_suspend *handler)
 						early_suspend);
 
 /*++++20120606 JimmySu add for touch power consumption*/
-	tegra_gpio_disable(TEGRA_GPIO_PT5);
-	tegra_gpio_disable(TEGRA_GPIO_PT6);
+	gpio_free(TEGRA_GPIO_PT5);
+	gpio_free(TEGRA_GPIO_PT6);
 /*----20120606 JimmySu add for touch power consumption*/
 
 	dev_dbg(&ts->client->dev, "[FTS]ft5x0x resume.\n");
@@ -321,19 +319,17 @@ static void ft5x0x_ts_shutdown(struct i2c_client *client)
 	disable_irq_nosync(client->irq);
 
 	/* power down LCD, add use a black screen for HDMI */
-	
-	tegra_gpio_enable(TEGRA_GPIO_PT6);
+
 	gpio_request(TEGRA_GPIO_PT6, "ft5x0x-i2c-sda-sleep");
 	gpio_direction_output(TEGRA_GPIO_PT6, 0);
 	gpio_set_value(TEGRA_GPIO_PT6, 0);
 
-	tegra_gpio_enable(TEGRA_GPIO_PT5);
 	gpio_request(TEGRA_GPIO_PT5, "ft5x0x-i2c-scl-sleep");
 	gpio_direction_output(TEGRA_GPIO_PT5, 0);
 	gpio_set_value(TEGRA_GPIO_PT5, 0);
 
 	return ;
-		
+
 }
 
 static int ft5x0x_ts_probe(struct i2c_client *client,
