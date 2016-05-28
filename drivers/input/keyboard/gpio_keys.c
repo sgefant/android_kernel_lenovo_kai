@@ -63,15 +63,15 @@ struct input_dev *g_pwr_input = NULL;
 
 void SendPowerbuttonEvent( void )
 {
-	if (g_pwr_input != NULL) 
-	{	
+	if (g_pwr_input != NULL)
+	{
 		input_report_key(g_pwr_input, KEY_POWER, 1);
 		input_report_key(g_pwr_input, KEY_POWER, 0);
 
 		input_sync(g_pwr_input);
 
 		printk("%s ...\n", __func__);
-	}	
+	}
 	else
 		printk("%s, fail !!!\n", __func__);
 }
@@ -767,9 +767,9 @@ static int __devinit gpio_keys_probe(struct platform_device *pdev)
 			error);
 		goto fail3;
 	}
-	
+
 	ddata->lock_status= gpio_get_value(TEGRA_GPIO_PQ2); //get KB_COL2 pin status
-	
+
 	ddata->sdev.name = FUNCTION_NAME;
 	ddata->sdev.print_name = print_switch_name;
 	ddata->sdev.print_state = print_switch_state;
@@ -781,7 +781,7 @@ static int __devinit gpio_keys_probe(struct platform_device *pdev)
 		printk("Error registering switch!\n");
 		goto fail4;
 	}
-	
+
 	error = gpio_request(TEGRA_GPIO_PQ2, "glocksensor_irq");
 	if (error < 0) {
 		dev_err(dev, "failed to request TEGRA_GPIO_PQ2  error %d\n",
@@ -795,13 +795,11 @@ static int __devinit gpio_keys_probe(struct platform_device *pdev)
 			error);
 		goto fail4;
 	}
-	
-	tegra_gpio_enable(TEGRA_GPIO_PQ2);
-		
+
 	ddata->lock_status= gpio_get_value(TEGRA_GPIO_PQ2);
-	
+
 	switch_set_state(&ddata->sdev, ddata->lock_status);
-	
+
 	error = request_threaded_irq(gpio_to_irq(TEGRA_GPIO_PQ2),NULL, process_interrupt, IRQF_TRIGGER_FALLING |IRQF_TRIGGER_RISING, "glocksensor_irq", ddata);
 	if( error )
 	{
@@ -889,10 +887,10 @@ static int gpio_keys_suspend(struct device *dev)
 				enable_irq_wake(bdata->irq);
 		}
 	}
-	
+
 	disable_irq(gpio_to_irq(TEGRA_GPIO_PQ2));
-	gpio_direction_input(TEGRA_GPIO_PQ2);	
-	
+	gpio_direction_input(TEGRA_GPIO_PQ2);
+
 	return 0;
 }
 
@@ -924,9 +922,9 @@ static int gpio_keys_resume(struct device *dev)
 			gpio_keys_gpio_report_event(bdata);
 	}
 	input_sync(ddata->input);
-	
+
 	enable_irq(gpio_to_irq(TEGRA_GPIO_PQ2));
-	ddata->lock_status= gpio_get_value(TEGRA_GPIO_PQ2); 
+	ddata->lock_status= gpio_get_value(TEGRA_GPIO_PQ2);
 	switch_set_state(&ddata->sdev, ddata->lock_status);
 
 	return 0;
