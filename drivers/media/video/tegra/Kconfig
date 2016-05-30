@@ -102,13 +102,6 @@ config VIDEO_OV7695
           This is a driver for the OV7695 YUV camera sensor device
           This sensor has external ISP, it isn't using tegra ISP.
 
-config VIDEO_MT9M114
-        tristate "MT9M114 camera sensor support"
-        depends on I2C && ARCH_TEGRA
-        ---help---
-          This is a driver for the MT9M114 YUV camera sensor device
-          This sensor has external ISP, it isn't using tegra ISP.
-
 config TORCH_SSL3250A
         tristate "SSL3250A flash/torch support"
         depends on I2C && ARCH_TEGRA
