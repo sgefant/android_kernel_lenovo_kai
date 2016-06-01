@@ -220,4 +220,7 @@ bool get_androidboot_mode_charger(void);
 #endif
 extern void tegra_set_usb_vbus_internal_wake(bool enable);
 extern void tegra_set_usb_id_internal_wake(bool enable);
+
+int cl2n_get_board_strap(void);
+int tegra_get_hw_ramcode(void);
 #endif
