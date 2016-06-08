@@ -22,9 +22,6 @@
 #include <linux/slab.h>
 #include <linux/uaccess.h>
 #include <linux/workqueue.h>
-#ifdef CONFIG_HAS_EARLYSUSPEND
-#include <linux/earlysuspend.h>
-#endif
 
 #include <linux/jsa1127.h>
 #include <linux/cl2n_board_version.h>
@@ -108,9 +105,9 @@ static int cl2n_get_attribut(const char *filename,  unsigned char *buf)
 	loff_t pos;
 	mm_segment_t old_fs;
 	ssize_t			nread;
-	
+
 	pfile = filp_open(filename, O_RDONLY, 0);
-	
+
 	if (IS_ERR(pfile)) {
 		pr_err("[%s]error occured while opening file %s.\n", __FUNCTION__,filename);
 		return -EIO;
@@ -366,12 +363,15 @@ static ssize_t sensor_enable_show(struct device *dev,
 static ssize_t sensor_enable_store(struct device *dev,
 	struct device_attribute *attr, const char *buf, size_t count)
 {
+	int value = simple_strtoul(buf, NULL, 10);
+	unsigned long delay = delay_to_jiffies(jsa1127_data.delay);
+
 	//----------------------------------------------------------------
 	if(jsa1127_data.first_boot)
 	{
-			/* Check board ID*/	
+			/* Check board ID*/
 			int cl2n_board_id = cl2n_get_board_strap();
-			
+
 			if(cl2n_board_id==CL2N_BOARD_VER_A00)//EVT
 			{
 					jsa1127_data.compensate_rate = 50;
@@ -382,9 +382,9 @@ static ssize_t sensor_enable_store(struct device *dev,
 			{
 					char buf[10];
 					cl2n_get_attribut("/sys/block/mmcblk0/device/name",buf);
-					
+
 					if(!strcmp(buf,"SEM16G"))
-					{			
+					{
 						//DVT1
 						jsa1127_data.compensate_rate = 50;
 						jsa1127_data.resolution = DEFAULT_RESOLUTION_R100K ;
@@ -404,13 +404,10 @@ static ssize_t sensor_enable_store(struct device *dev,
 					jsa1127_data.resolution = DEFAULT_RESOLUTION_R800K ;
 					printk("(%s)Check board ID:PVT/MP \n",__FUNCTION__);
 			}
-			
+
 		jsa1127_data.first_boot = 0;
 	}
 	//----------------------------------------------------------------
-	int value = simple_strtoul(buf, NULL, 10);
-	unsigned long delay = delay_to_jiffies(jsa1127_data.delay);
-
 	mutex_lock(&jsa1127_data.mutex);
 
 	if (value == 1 && jsa1127_data.enabled == 0)
@@ -512,7 +509,7 @@ static ssize_t sensor_test_store(struct device *dev,
 					printk("Send CMD shutdown failed!");
 				}
   		break;
-  	case 4:  			
+  	case 4:
 				lux = jsa1127_read_lux();
 				if (lux != INVALID_COUNT)
 				{
@@ -523,7 +520,7 @@ static ssize_t sensor_test_store(struct device *dev,
 				{
 					printk("Send CMD shutdown failed!");
 				}
-					
+
   		break;
   	default:
   		break;
@@ -536,7 +533,7 @@ static ssize_t sensor_compensate_show(struct device *dev,
 	struct device_attribute *attr, char *buf)
 {
 	DBG("compensate: %d", jsa1127_data.compensate_rate);
-	return snprintf(buf, sizeof(buf), "%d\n", jsa1127_data.compensate_rate);
+	return snprintf(buf, sizeof(buf), "%lu\n", jsa1127_data.compensate_rate);
 }
 
 static ssize_t sensor_compensate_store(struct device *dev,
@@ -548,7 +545,7 @@ static ssize_t sensor_compensate_store(struct device *dev,
 	jsa1127_data.compensate_rate = value;
 	mutex_unlock(&jsa1127_data.mutex);
 
-	DBG("set delay time as %d ms", jsa1127_data.compensate_rate);
+	DBG("set delay time as %lu ms", jsa1127_data.compensate_rate);
 
 	return count;
 }
@@ -571,7 +568,7 @@ static struct device_attribute sensor_dev_attr_test = __ATTR(test,
 static struct device_attribute sensor_dev_attr_compensate = __ATTR(compensate,
 	S_IRUGO|S_IWUSR|S_IWGRP,
 	sensor_compensate_show, sensor_compensate_store);
-	
+
 static struct attribute *sensor_attributes[] = {
 	&sensor_dev_attr_data.attr,
 	&sensor_dev_attr_delay.attr,
