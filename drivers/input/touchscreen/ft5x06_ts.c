@@ -253,16 +253,15 @@ static irqreturn_t ft5x0x_ts_interrupt(int irq, void *dev_id)
 	return IRQ_HANDLED;
 }
 
-#if defined(CONFIG_HAS_EARLYSUSPEND)
-static void ft5x0x_ts_suspend(struct early_suspend *handler)
+#if defined(CONFIG_PM)
+static int ft5x0x_ts_suspend(struct device *dev)
 {
-	struct ft5x0x_ts_data *ts = container_of(handler, struct ft5x0x_ts_data,
-						early_suspend);
+	struct ft5x0x_ts_data *data = dev_get_drvdata(dev);
 
-	dev_dbg(&ts->client->dev, "[FTS]ft5x0x suspend\n");
-	disable_irq(ts->pdata->irq);
-	set_bit(FT_SUSPEND, &ts->flags);
-	gpio_set_value(ts->pdata->reset, 0);
+	disable_irq(data->client->irq);
+
+	//set_bit(FT_SUSPEND, &data->flags);
+	gpio_set_value(data->pdata->reset, 0);
 
 /*++++20120606 JimmySu add for touch power consumption*/
 	gpio_request(TEGRA_GPIO_PT5, "ft5x0x-i2c-scl-sleep");
@@ -274,39 +273,40 @@ static void ft5x0x_ts_suspend(struct early_suspend *handler)
 	gpio_set_value(TEGRA_GPIO_PT6, 0);
 /*----20120606 JimmySu add for touch power consumption*/
 
-	return;
+	return 0;
 }
 
-static void ft5x0x_ts_resume(struct early_suspend *handler)
+static int ft5x0x_ts_resume(struct device *dev)
 {
-	u8 chip_id;
-	struct ft5x0x_ts_data *ts = container_of(handler, struct ft5x0x_ts_data,
-						early_suspend);
+	//u8 chip_id;
+	struct ft5x0x_ts_data *data = dev_get_drvdata(dev);
 
 /*++++20120606 JimmySu add for touch power consumption*/
 	gpio_free(TEGRA_GPIO_PT5);
 	gpio_free(TEGRA_GPIO_PT6);
 /*----20120606 JimmySu add for touch power consumption*/
 
-	dev_dbg(&ts->client->dev, "[FTS]ft5x0x resume.\n");
-	gpio_set_value(ts->pdata->reset, 1);
+	gpio_set_value_cansleep(data->pdata->reset, 1);
 	mdelay(10);
-	gpio_set_value(ts->pdata->reset, 0);
+	gpio_set_value_cansleep(data->pdata->reset, 0);
 	mdelay(10);
-	gpio_set_value(ts->pdata->reset, 1);
+	gpio_set_value_cansleep(data->pdata->reset, 1);
 	msleep(100);
 
-	if(ft5x0x_read_reg(ts->client, 0xA3, &chip_id) < 0){
+/*	if(ft5x0x_read_reg(ts->client, 0xA3, &chip_id) < 0){
 		dev_dbg(&ts->client->dev, "[FTS]ft5x0x chip ID read error reset once.\n");
 		gpio_set_value(ts->pdata->reset, 0);
 		mdelay(10);
 	gpio_set_value(ts->pdata->reset, 1);
-	}
-	dev_dbg(&ts->client->dev, "[FTS]ft5x0x chip ID = 0x%x.\n", chip_id);
+	}*/
 
-	clear_bit(FT_SUSPEND, &ts->flags);
-	enable_irq(ts->pdata->irq);
+	//clear_bit(FT_SUSPEND, &ts->flags);
+	enable_irq(data->client->irq);
+
+	return 0;
 }
+
+static SIMPLE_DEV_PM_OPS(ft5x0x_ts_pm, ft5x0x_ts_suspend, ft5x0x_ts_resume);
 #endif
 
 
@@ -450,12 +450,12 @@ static int ft5x0x_ts_probe(struct i2c_client *client,
 	}
 	dev_dbg(&client->dev, "[FTS]ft5x0x chip ID = 0x%x.\n", uc_reg_value);
 
-#if defined(CONFIG_HAS_EARLYSUSPEND)
+/*#if defined(CONFIG_HAS_EARLYSUSPEND)
 	ft5x0x_ts->early_suspend.level = EARLY_SUSPEND_LEVEL_BLANK_SCREEN + 1;
 	ft5x0x_ts->early_suspend.suspend = ft5x0x_ts_suspend;
 	ft5x0x_ts->early_suspend.resume = ft5x0x_ts_resume;
 	register_early_suspend(&ft5x0x_ts->early_suspend);
-#endif
+#endif*/
 
 	clear_bit(FT_SUSPEND, &ft5x0x_ts->flags);
 	enable_irq(client->irq);
@@ -515,6 +515,9 @@ static struct i2c_driver ft5x0x_ts_driver = {
 	.driver = {
 		   .name = FT5X0X_NAME,
 		   .owner = THIS_MODULE,
+#ifdef CONFIG_PM
+		   .pm = &ft5x0x_ts_pm,
+#endif
 		   },
 };
 
