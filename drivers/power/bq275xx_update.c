@@ -37,18 +37,16 @@ struct bq275xx_data_flash_info{
 static unsigned int transBytes2UnsignedInt(unsigned char msb, unsigned char lsb)
 {
   unsigned int tmp;
-  
+
   tmp = ((msb << 8) & 0xFF00);
-  return ((unsigned int)(tmp + lsb) & 0x0000FFFF);  
+  return ((unsigned int)(tmp + lsb) & 0x0000FFFF);
 }
 
 static void transUnsignedInt2Bytes(unsigned int data, unsigned char* bytes)
 {
-  unsigned char bytesdata[2];
-  
   bytes[1] = (unsigned char)((data & 0xFF00) >> 8);
   bytes[0] = (unsigned char)(data & 0x00FF);
-  
+
   return;
 }
 
@@ -58,7 +56,7 @@ static int bq275xx_write_code(struct i2c_client *client, u8 reg, char *wt_value,
 	unsigned char data[bytes + 1];
 	int err;
 	int i;
-	
+
 	if (!client->adapter)
 		return -ENODEV;
 
@@ -69,8 +67,8 @@ static int bq275xx_write_code(struct i2c_client *client, u8 reg, char *wt_value,
 
 	data[0] = reg;
 	for(i=1;i<(bytes+1);i++)
-		data[i] = wt_value[i-1];	
-	
+		data[i] = wt_value[i-1];
+
 	err = i2c_transfer(client->adapter, msg, 1);
 	return err;
 }
@@ -96,7 +94,7 @@ static int bq275xx_read_code(struct i2c_client *client, u8 reg, char *rt_value, 
 		msg->len = bytes;
 		msg->flags = I2C_M_RD;
 		err = i2c_transfer(client->adapter, msg, 1);
-		if (err >= 0) {		
+		if (err >= 0) {
 			for(i = 0;i<bytes;i++)
 			{
 				rt_value[i]=data[i];
@@ -123,17 +121,17 @@ static int bq275xx_read_block(struct i2c_client *client, int subclass, int offse
   	bq275xx_write_code(client, bq27541CMD_DFCLS, TxData, 1);    // Write the subclass value
   	msleep(100);
 	TxData[0] = numBlock;
-  	bq275xx_write_code(client, bq27541CMD_DFBLK, TxData, 1);// Select offset within the flash  
+  	bq275xx_write_code(client, bq27541CMD_DFBLK, TxData, 1);// Select offset within the flash
   	msleep(1000);
 	printk("***** Data flash Summary [Subclass ID: %d]*****\n", subclass);
-	bq275xx_read_code(client, bq27541CMD_ADF, RxData, 32); 
+	bq275xx_read_code(client, bq27541CMD_ADF, RxData, 32);
 	for (i = 0; i < BUFFERSIZE; i++)          // Compute the checksum of the block
   	{
 		data[i] = RxData[i];
 		//printk("DataBlock[0x%02x]: 0x%02x\n", bq27541CMD_ADF+i, RxData[i]);
   	}
 	printk("***** End of Data Flash Block %d*****\n", numBlock);
-	
+
 	return 0;
 }
 
@@ -144,8 +142,8 @@ static ssize_t bq275xx_blockdata_show(struct device *dev,
 	unsigned char RxData[32];
 
 	bq275xx_read_block(client, bq275xx_data->subclass, bq275xx_data->offset, RxData);
-	
-	return sprintf(buf, "%u\n", "read block data success");
+
+	return sprintf(buf, "read block data success\n");
 }
 
 static ssize_t bq275xx_blockdata_store(struct device *dev,
@@ -156,21 +154,22 @@ static ssize_t bq275xx_blockdata_store(struct device *dev,
 	unsigned long val;
 	int error, i;
 	char *tok;
+	char *buff;
 	unsigned int num = 1;
 	unsigned int subID = 0;
 	unsigned int offset = 0;
 	int data = 0;
 	unsigned int numbytes = 0;
 	unsigned char TxData[32];
-	unsigned char RxData[32];
 	unsigned char WordData[2];
 	unsigned int sum = 0;
-	unsigned int checksum;
+	unsigned char checksum;
 	unsigned int numBlock = 0;
 
 	/* echo [subID],[offset],[data],[writebyte] > blockdata */
 	while (true) {
-		tok = strsep(&buf, ",");
+		buff = kstrdup(buf, GFP_KERNEL);
+		tok = strsep(&buff, ",");
 		if (!tok)
 			break;
 		error = strict_strtoul(tok, 10, &val);
@@ -208,16 +207,16 @@ static ssize_t bq275xx_blockdata_store(struct device *dev,
 		TxData[numBlock+1] = WordData[0];
 		TxData[numBlock] = WordData[1];
 	}
-	
+
   	printk("[bq275xx gauge]write data....0x%02x%02x\n", WordData[1], WordData[0]);
   	for (i = 0; i < BUFFERSIZE; i++)          // Write 32 bytes to Info Block A
   	{
-    	bq275xx_write_code(client, (bq27541CMD_ADF+i), &TxData[i], 1);  
+    	bq275xx_write_code(client, (bq27541CMD_ADF+i), &TxData[i], 1);
  	}
-	
+
 	for (i = 0; i < BUFFERSIZE; i++)          // Compute the checksum of the block
   	{
-    	sum += TxData[i];                       // Calculate the sum of the values  
+    	sum += TxData[i];                       // Calculate the sum of the values
   	}
 	checksum = (0xFF - (sum & 0x00FF));       // Compute checksum based on the sum
 	printk("[bq275xx gauge]write checksum....0x%02x\n", checksum);
@@ -244,7 +243,7 @@ static ssize_t bq275xx_en_dataflash_show(struct device *dev,
 	unsigned char TxData[2];
 	unsigned char RxData[2];
 	int val;
-	
+
 	TxData[0] = 0x00;
 	TxData[1] = 0x00;
 	bq275xx_write_code(client, bq27541CMD_CNTL_LSB, TxData, 2);// BlockDataControl() = 0x00
@@ -253,7 +252,7 @@ static ssize_t bq275xx_en_dataflash_show(struct device *dev,
   	bq275xx_read_code(client, bq27541CMD_CNTL_LSB, RxData, 2);
 	val = transBytes2UnsignedInt(RxData[1], RxData[0]);
   	printk("[bq275xx gas-gauge]Control register is 0x%04x\n", val);
-	
+
 	return sprintf(buf, "%u\n", val);
 }
 
@@ -263,7 +262,8 @@ static ssize_t bq275xx_en_dataflash_store(struct device *dev,
 {
 	struct i2c_client *client = container_of(dev, struct i2c_client, dev);
 	unsigned char TxData[2];
-	int val, error;
+	int error;
+	long unsigned int val;
 
 	error = strict_strtoul(buf, 10, &val);
 	if (error)
@@ -310,11 +310,13 @@ static ssize_t bq275xx_readinfo_store(struct device *dev,
 	unsigned int offset = 0;
 	unsigned long val;
 	char *tok;
+	char *buff;
 	int error;
 
 	/* echo [subID],[offset] > readinfo*/
 	while (true) {
-		tok = strsep(&buf, ",");
+		buff = kstrdup(buff, GFP_KERNEL);
+		tok = strsep(&buff, ",");
 		if (!tok)
 			break;
 		error = strict_strtoul(tok, 10, &val);
@@ -346,7 +348,7 @@ static ssize_t bq275xx_control_show(struct device *dev,
 	unsigned char TxData[2];
 	unsigned char RxData[2];
 	int val, i;
-	
+
 	TxData[0] = 0x02;
 	TxData[1] = 0x00;
 	bq275xx_write_code(client, bq27541CMD_CNTL_LSB, TxData, 2);// BlockDataControl() = 0x00
@@ -386,7 +388,7 @@ static ssize_t bq275xx_control_show(struct device *dev,
 		val = transBytes2UnsignedInt(RxData[1], RxData[0]);
   		printk("[bq275xx gas-gauge][REG-0x%02x] is 0x%04x\n",i, val);
 	}
-	
+
 	return sprintf(buf, "%u\n", val);
 }
 
@@ -397,16 +399,19 @@ static ssize_t bq275xx_control_store(struct device *dev,
 	struct i2c_client *client = container_of(dev, struct i2c_client, dev);
 	unsigned char TxData[2];
 	unsigned char RxData[2];
-	int val, error;
+	int error;
+	long unsigned int val;
 	unsigned int offset = 0;
 	unsigned int value = 0;
 	char *tok;
+	char *buff;
 	unsigned int num = 1;
 
 	/* echo [offset],[value] > control*/
 
 	while (true) {
-		tok = strsep(&buf, ",");
+		buff = kstrdup(buf, GFP_KERNEL);
+		tok = strsep(&buff, ",");
 		if (!tok)
 			break;
 		error = strict_strtoul(tok, 10, &val);
@@ -424,7 +429,7 @@ static ssize_t bq275xx_control_store(struct device *dev,
 		printk("[bq275xx gauge]the number of parameters not match.\n");
 		return count;
 	}
-	
+
 	/* Force Reset */
 	TxData[0] = value;
 	TxData[1] = 0x00;
@@ -434,7 +439,7 @@ static ssize_t bq275xx_control_store(struct device *dev,
   	RxData[1] = 0x00;
   	bq275xx_read_code(client, offset, RxData, 2);
 	val = transBytes2UnsignedInt(RxData[1], RxData[0]);
-  	printk("[bq275xx gas-gauge]after write offset[0x%02x] data is 0x%04x\n", offset, val);
+  	printk("[bq275xx gas-gauge]after write offset[0x%02x] data is 0x%04lu\n", offset, val);
 	return count;
 }
 static DEVICE_ATTR(control, 0666, bq275xx_control_show, bq275xx_control_store);
@@ -512,7 +517,7 @@ int bq275xx_parameter_update(struct i2c_client *client)
 	unsigned char WordData[2];
 	unsigned int numBlock = 0;
 	unsigned int sum = 0;
-	unsigned int checksum;
+	unsigned char checksum;
 	int i;
 	/* unseal key */
 	enData[0] = 0x14;
@@ -545,16 +550,16 @@ int bq275xx_parameter_update(struct i2c_client *client)
 	}
 	TxData[numBlock+1] = WordData[0];
 	TxData[numBlock] = WordData[1];
-		
+
   	printk("[bq275xx gauge]write data....0x%02x%02x\n", WordData[1], WordData[0]);
   	for (i = 0; i < BUFFERSIZE; i++)          // Write 32 bytes to Info Block A
   	{
-    	bq275xx_write_code(client, (bq27541CMD_ADF+i), &TxData[i], 1);  
+    	bq275xx_write_code(client, (bq27541CMD_ADF+i), &TxData[i], 1);
  	}
-	
+
 	for (i = 0; i < BUFFERSIZE; i++)          // Compute the checksum of the block
   	{
-    	sum += TxData[i];                       // Calculate the sum of the values  
+    	sum += TxData[i];                       // Calculate the sum of the values
   	}
 	checksum = (0xFF - (sum & 0x00FF));       // Compute checksum based on the sum
 	printk("[bq275xx gauge]write checksum....0x%02x\n", checksum);
@@ -604,13 +609,13 @@ int bq275xx_init_development_mode(struct i2c_client *client)
   	RxData[0] = 0x00;
   	RxData[1] = 0x00;
   	bq275xx_read_code(client, bq27541CMD_DNAMELEN, RxData, 1);
-  	printk("[bq27541 gauge]Device Name Length is %d\n", RxData[0]); 
+  	printk("[bq27541 gauge]Device Name Length is %d\n", RxData[0]);
 	retval = RxData[0];
   	// Read Device Name (Rx buffer should end up with ASCII chars for 'bq27541')
   	bq275xx_read_code(client, bq27541CMD_DNAME, RxData_Name, retval);
 	RxData_Name[7] = 0;
   	printk("[bq27541 gauge]Device Name is %s\n", RxData_Name);
-	
+
 	return 0;
 
 alloc_err:

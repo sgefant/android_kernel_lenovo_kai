@@ -486,31 +486,12 @@ static irqreturn_t lis3dh_acc_isr2(int irq, void *dev)
 
 static void lis3dh_acc_irq1_work_func(struct work_struct *work)
 {
-
-	struct lis3dh_acc_data *acc =
-	container_of(work, struct lis3dh_acc_data, irq1_work);
-	/* TODO  add interrupt service procedure.
-		 ie:lis3dh_acc_get_int1_source(acc); */
-	;
-	/*  */
 	printk(KERN_INFO "%s: IRQ1 triggered\n", LIS3DH_ACC_DEV_NAME);
-exit:
-	enable_irq(acc->irq1);
 }
 
 static void lis3dh_acc_irq2_work_func(struct work_struct *work)
 {
-
-	struct lis3dh_acc_data *acc =
-	container_of(work, struct lis3dh_acc_data, irq2_work);
-	/* TODO  add interrupt service procedure.
-		 ie:lis3dh_acc_get_tap_source(acc); */
-	;
-	/*  */
-
 	printk(KERN_INFO "%s: IRQ2 triggered\n", LIS3DH_ACC_DEV_NAME);
-exit:
-	enable_irq(acc->irq2);
 }
 
 int lis3dh_acc_update_g_range(struct lis3dh_acc_data *acc, u8 new_g_range)
@@ -629,33 +610,6 @@ static int lis3dh_acc_register_write(struct lis3dh_acc_data *acc, u8 *buf,
 			return err;
 	return err;
 }
-
-static int lis3dh_acc_register_read(struct lis3dh_acc_data *acc, u8 *buf,
-		u8 reg_address)
-{
-
-	int err = -1;
-	buf[0] = (reg_address);
-	err = lis3dh_acc_i2c_read(acc, buf, 1);
-	return err;
-}
-
-static int lis3dh_acc_register_update(struct lis3dh_acc_data *acc, u8 *buf,
-		u8 reg_address, u8 mask, u8 new_bit_values)
-{
-	int err = -1;
-	u8 init_val;
-	u8 updated_val;
-	err = lis3dh_acc_register_read(acc, buf, reg_address);
-	if (!(err < 0)) {
-		init_val = buf[1];
-		updated_val = ((mask & new_bit_values) | ((~mask) & init_val));
-		err = lis3dh_acc_register_write(acc, buf, reg_address,
-				updated_val);
-	}
-	return err;
-}
-
 
 
 static int lis3dh_acc_get_acceleration_data(struct lis3dh_acc_data *acc,

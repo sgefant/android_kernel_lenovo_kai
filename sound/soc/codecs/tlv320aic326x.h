@@ -34,7 +34,7 @@
 #define  INT_FLAG2_BUTTN_PRESSBIT 0x20
 
 /* Enable register caching on write */
- #define EN_REG_CACHE 1 
+ #define EN_REG_CACHE 1
 
 //#define MULTIBYTE_CONFIG_SUPPORT
 
@@ -655,13 +655,13 @@ struct aic3262_rate_divs {
 	struct aic3262_configs codec_specific_regs[NO_FEATURE_REGS];
 };
 
-//&*&*&*BC1_120514: use gpio interrupt to detect headset 
+//&*&*&*BC1_120514: use gpio interrupt to detect headset
 #define AIC326X_NO_JACK		BIT(0)
 #define AIC326X_HEADSET_DET	BIT(1)
 #define AIC326X_HEADPHO_DET	BIT(2)
 
 int aic326x_headset_type(struct snd_soc_codec *codec, int jack_insert);
-//&*&*&*BC1_120514: use gpio interrupt to detect headset 
+//&*&*&*BC1_120514: use gpio interrupt to detect headset
 
 /*
 *****************************************************************************
@@ -675,17 +675,17 @@ int aic326x_headset_type(struct snd_soc_codec *codec, int jack_insert);
  *      enable the headset detection
  *
  */
- 
+
 extern int aic326x_headset_detect(struct snd_soc_codec *codec,
 	struct snd_soc_jack *jack, int jack_type);
 extern int aic326x_headset_button_init(struct snd_soc_codec *codec,
 	struct snd_soc_jack *jack, int jack_type);
 
-extern u8 aic3262_read(struct snd_soc_codec *codec, u16 reg);
+extern unsigned int aic3262_read(struct snd_soc_codec *codec, unsigned int reg);
 extern u16 aic3262_read_2byte(struct snd_soc_codec *codec, u16 reg);
 extern int aic3262_reset_cache(struct snd_soc_codec *codec);
 extern int aic3262_change_page(struct snd_soc_codec *codec, u8 new_page);
-extern int aic3262_write(struct snd_soc_codec *codec, u16 reg, u8 value);
+extern int aic3262_write(struct snd_soc_codec *codec, unsigned int reg, unsigned int value);
 extern void aic3262_write_reg_cache(struct snd_soc_codec *codec,
 				    u16 reg, u8 value);
 extern int aic3262_change_book(struct snd_soc_codec *codec, u8 new_book);

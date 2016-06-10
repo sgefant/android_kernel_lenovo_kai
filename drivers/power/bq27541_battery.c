@@ -88,10 +88,10 @@ struct bq27541_device_info {
 	struct power_supply	bat;
 	struct power_supply	ac;
 	struct power_supply	usb;
-	/* State Of Connect */	
+	/* State Of Connect */
 	int lifesoc;
 	int status;
-	int ac_online;	
+	int ac_online;
 	int usb_online;
 	int battery_online;
 	//struct timer_list	battery_poll_timer;
@@ -137,11 +137,7 @@ static enum power_supply_property bq27541_usb_props[] = {
 	POWER_SUPPLY_PROP_ONLINE,
 };
 
-static char *power_supplied_to[] = {
-	"battery",
-};
-
-int bq27541_get_battery_rsoc();
+int bq27541_get_battery_rsoc(void);
 extern int bq275xx_init_development_mode(struct i2c_client *client);
 extern int bq275xx_parameter_update(struct i2c_client *client);
 extern int bq275xx_force_reset(struct i2c_client *client);
@@ -149,7 +145,7 @@ extern int bq275xx_force_reset(struct i2c_client *client);
 #ifdef CONFIG_CL2N_FAKE_BATTERY
 #define PMC_SCRATCH20		0xa0
 #define FAKE_BATTERY_MODE	BIT(25)
-bool is_fake_battery()
+bool is_fake_battery(void)
 {
 	void __iomem *reset = IO_ADDRESS(TEGRA_PMC_BASE + 0x00);
 	u32 reg;
@@ -164,7 +160,7 @@ bool is_fake_battery()
 	}
 
 	printk("%s, fack_battery=%d \n", __func__, ret);
-	
+
 	return ret;
 }
 #endif
@@ -276,14 +272,14 @@ static int bq27541_battery_current(struct bq27541_device_info *di)
 	//&*&*&*AL2_20120814
 	return curr * 1000;
 	//return curr;
-	
+
 }
 
 /*
  * Return the battery Relative State-of-Charge
  * Or < 0 if something fails.
  */
-int bq27541_get_battery_rsoc()
+int bq27541_get_battery_rsoc(void)
 {
 	int ret;
 	int rsoc = 0;
@@ -321,31 +317,6 @@ static int bq27541_battery_rsoc(struct bq27541_device_info *di)
 	}
 	di->lifesoc = rsoc;
 	return rsoc;
-}
-
-/*
-static int bq27541_get_ac_status(void)
-{
-	int charger_gpio = irq_to_gpio(bq27541_device->irq);
-	return !gpio_get_value(charger_gpio);
-}
-*/
-
-static int bq27541_get_charging_status(void)
-{
-	int ret;
-	int curr = 0;
-
-	struct bq27541_device_info *di = bq27541_device;
-
-	ret = bq27541_read(BQ27541_REG_AI, &curr, 0, di);
-	if (ret) {
-		dev_err(di->dev, "error reading current\n");
-		return 0;
-	}
-
-	curr = (int)(s16)curr;
-	return curr * 1000;
 }
 
 static int bq27541_battery_status(struct bq27541_device_info *di,
@@ -392,20 +363,20 @@ int bq27541_fake_battery_get_property(enum power_supply_property psp, union powe
 			val->intval = 1; // not charging
 		break;
 	case POWER_SUPPLY_PROP_VOLTAGE_NOW:
-	case POWER_SUPPLY_PROP_PRESENT:	
+	case POWER_SUPPLY_PROP_PRESENT:
 			val->intval = 4000;
 
 		if (psp == POWER_SUPPLY_PROP_PRESENT)
 			val->intval = val->intval <= 0 ? 0 : 1;
 		break;
-	case POWER_SUPPLY_PROP_CURRENT_NOW:		
+	case POWER_SUPPLY_PROP_CURRENT_NOW:
 			val->intval = 100000000;
 		break;
 	case POWER_SUPPLY_PROP_CHARGE_FULL_DESIGN:
 			val->intval = 6000;
 		break;
-	case POWER_SUPPLY_PROP_CHARGE_FULL:		
-			val->intval = 6000;	
+	case POWER_SUPPLY_PROP_CHARGE_FULL:
+			val->intval = 6000;
 		break;
 	case POWER_SUPPLY_PROP_CAPACITY:
 			val->intval = 100;
@@ -519,7 +490,7 @@ static int bq27541_ac_get_property(struct power_supply *psy,
 {
 	int ret = 0;
 	struct bq27541_device_info *di = bq27541_device;
-	
+
 	switch (psp) {
 	case POWER_SUPPLY_PROP_ONLINE:
 		if(di->ac_online)
@@ -540,7 +511,7 @@ static int bq27541_usb_get_property(struct power_supply *psy,
 {
 	int ret = 0;
 	struct bq27541_device_info *di = bq27541_device;
-	
+
 	switch (psp) {
 	case POWER_SUPPLY_PROP_ONLINE:
 		if(di->usb_online)
@@ -556,9 +527,9 @@ static int bq27541_usb_get_property(struct power_supply *psy,
 }
 
 static void bq27541_charger_status(enum charging_states status, enum charger_type chrg_type, void *data)
-{	
-	struct bq27541_device_info *di = (struct bq27541_device_info *)data;	
-	
+{
+	struct bq27541_device_info *di = (struct bq27541_device_info *)data;
+
 	mutex_lock(&battery_mutex);
 	di->ac_online = 0;
 	di->usb_online = 0;
@@ -588,14 +559,14 @@ static void bq27541_charger_status(enum charging_states status, enum charger_typ
 	//&*&*&*AL1_20121022 //skip battery information before initialization
 	if(di->initial)
 	//&*&*&*AL2_20121022 //skip battery information before initialization
-	power_supply_changed(&di->bat);	
+	power_supply_changed(&di->bat);
 }
 
 static int bq27541_powersupply_init(struct bq27541_device_info *di)
 {
 	int retval;
 	struct power_supply *battery, *ac, *usb;
-	
+
 	ac = &di->ac;
 	ac->type = POWER_SUPPLY_TYPE_MAINS;
 	ac->properties = bq27541_ac_props;
@@ -680,7 +651,7 @@ static ssize_t bq27541_fake_soc_show(struct device *dev,
 				    struct device_attribute *attr, char *buf)
 {
 	struct bq27541_device_info *di = dev_get_drvdata(dev);
-	
+
 	return sprintf(buf, "%u\n", di->fake_soc);
 }
 
@@ -689,7 +660,7 @@ static ssize_t bq27541_fake_soc_store(struct device *dev,
 				     const char *buf, size_t count)
 {
 	struct bq27541_device_info *di = dev_get_drvdata(dev);
-	int val;
+	long unsigned int val;
 	int error;
 
 	error = strict_strtoul(buf, 10, &val);
@@ -699,7 +670,7 @@ static ssize_t bq27541_fake_soc_store(struct device *dev,
 	if(val == 28239)
 	{
 		bq275xx_init_development_mode(di->client);
-		printk("[bq27541 gauge]Enable data flash mode : %d...\n", val);
+		printk("[bq27541 gauge]Enable data flash mode : %lu...\n", val);
 	}
 	else if(val>=0 && val<105)
 	{
@@ -879,7 +850,7 @@ static int bq27541_battery_probe(struct i2c_client *client,
 	}
 	*/
 	retval = register_callback(bq27541_charger_status, bq27541_device);
-	if (retval < 0)		
+	if (retval < 0)
 		dev_info(&client->dev, "register smb349 callback error\n");
 
 #ifdef ADD_ATTRIBUTES_FOR_DEBUG

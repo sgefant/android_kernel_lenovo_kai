@@ -665,25 +665,12 @@ static int max77663_gpio_to_irq(struct gpio_chip *gpio, unsigned offset)
 
 //&*&*&*AL2_20120613
 #ifdef MAX77663_CALLBACK_FUNCTION
-static void max77663_low_battery_alert(void *data)
-{	
-	struct max77663_chip *chip = (struct max77663_chip *)data;	
-	printk("[max77663-core]enter %s.\n", __func__);
-
-	#ifdef CONFIG_CL2N_WAKEUP_CABLE
-	if (chip->enter_early_suspend == 1 && chip->wakeup_event == 0) {
-		printk("[max77663-core]send power key event.\n", __func__);
-		SendPowerbuttonEvent();
-		chip->wakeup_event = 1;
-	}
-	#endif
-}
 void max77663_OTG_alert(void *data)
 {
 	printk("[max77663-core]enter %s.\n", __func__);
 	if(max77663_chip == NULL )
 		return;
-	
+
 	#ifdef CONFIG_CL2N_WAKEUP_CABLE
 	max77663_chip->is_otg_cable = *((int *)data);
 	#endif

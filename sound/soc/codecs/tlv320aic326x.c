@@ -92,15 +92,11 @@ static u8 aic3262_reg_ctl;
  * This function reprograms the clock dividers etc. this flag can be used to
  * disable this when the clock dividers are programmed by pps config file
  */
-static int soc_static_freq_config = 1;
-static struct aic3262_priv *aic3262_priv_data;
-static struct i2c_client *i2c_pdev;
-static struct snd_soc_codec *aic3262_codec;
 //&*&*&*BC1_120516: reduce headset pop noise
 static int headset_enable = 0;
 //static int headset_insert = 0;
 //&*&*&*BC2_120516: reduce headset pop noise
-static int firstbootcount = -1;
+static struct snd_soc_codec *aic3262_codec;
 //&*&*&*BC1_120530: add audio srs function
 static int srs_mode = 0;
 //&*&*&*BC2_120530: add audio srs function
@@ -676,24 +672,24 @@ static int get_headset_event_hp (struct snd_kcontrol *kcontrol,	struct snd_ctl_e
 static int set_headset_event_hp (struct snd_kcontrol *kcontrol,	struct snd_ctl_elem_value *ucontrol){
 
 	struct snd_soc_codec *codec = snd_kcontrol_chip(kcontrol);
-	headset_enable = (ucontrol->value.integer.value[0]);
 	//int i, value[10] = {0x84, 0x83, 0x82, 0x81, 0x80, 0xBF, 0xBE, 0xBD, 0xBC, 0xBB};
-	static int counter = -1;
-	
+	headset_enable = (ucontrol->value.integer.value[0]);
+
 	//printk("headset_enable = %d\n", headset_enable);
+
 //&*&*&*HY1_1201003: Boot with wired headset inserted, boot sound can be heared from wired headset.
 	if(headset_enable == 1)
-	{	
+	{
 		/*if((counter < 0) && (firstbootcount < 0))
 			counter++;
 		else*/
-		{	
+		{
 			//mdelay(50);
 			//snd_soc_write(codec, HPL_VOL, 0x80);
 			snd_soc_write(codec, HPL_VOL, 0xBD);
-		}		
-	}	
-	
+		}
+	}
+
 	else if(headset_enable == 0)
 	{
 		snd_soc_write(codec, HPL_VOL, 0xB9);
@@ -704,7 +700,7 @@ static int set_headset_event_hp (struct snd_kcontrol *kcontrol,	struct snd_ctl_e
 		snd_soc_write(codec, SPK_AMP_CNTL_R4, 0x22);
 	}
 	else
-	{	
+	{
 		snd_soc_write(codec, HPL_VOL, 0xBD);
 		snd_soc_write(codec, SPK_AMP_CNTL_R4, 0x00);
 	}
@@ -728,8 +724,8 @@ static int set_srs_event (struct snd_kcontrol *kcontrol, struct snd_ctl_elem_val
 	{
 		//apply_patch_d_b1(codec, patch_speaker_srs, ARRAY_SIZE(patch_speaker_srs));
 		//apply_patch_d_b1(codec, patch_hp_srs, ARRAY_SIZE(patch_hp_srs));
-		apply_patch_d_b1(codec, patch_speaker_srsdrc, ARRAY_SIZE(patch_speaker_srsdrc));		
-	}		
+		apply_patch_d_b1(codec, patch_speaker_srsdrc, ARRAY_SIZE(patch_speaker_srsdrc));
+	}
 	else if(srs_mode == 2)
 	{
 		apply_patch_d_b1(codec, patch_hp, ARRAY_SIZE(patch_hp));
@@ -743,8 +739,8 @@ static int set_srs_event (struct snd_kcontrol *kcontrol, struct snd_ctl_elem_val
 		//apply_patch_d_b1(codec, patch_speaker, ARRAY_SIZE(patch_speaker));
 		//apply_patch_d_b1(codec, patch_hp, ARRAY_SIZE(patch_hp));
 		apply_patch_d_b1(codec, patch_speaker_drc, ARRAY_SIZE(patch_speaker_drc));
-	}			
-	
+	}
+
 	printk("srs_mode = %d\n", srs_mode);
 
 	return 0;
@@ -764,15 +760,15 @@ static int set_asr_event (struct snd_kcontrol *kcontrol, struct snd_ctl_elem_val
 
  	if(asr_enable == 1)
 	{
-		
-		apply_patch_d_b1_rec(codec, patch_rec_asr, ARRAY_SIZE(patch_rec_asr));		
-	}		
+
+		apply_patch_d_b1_rec(codec, patch_rec_asr, ARRAY_SIZE(patch_rec_asr));
+	}
 	else
 	{
-		
+
 		apply_patch_d_b1_rec(codec, patch_rec_main, ARRAY_SIZE(patch_rec_main));
-	}			
-	
+	}
+
 	printk("asr_enable = %d\n", asr_enable);
 
 	return 0;
@@ -785,13 +781,13 @@ static int aic3262_prepare_for_shutdown(struct notifier_block *this,
 		unsigned long cmd, void *p)
 {
 
-	printk("aic3262_prepare_for_shutdown\n");	
+	printk("aic3262_prepare_for_shutdown\n");
 	//snd_soc_write(aic3262_codec, PUMP_CNTL_R3, 0x32);
 	snd_soc_write(aic3262_codec, HPL_VOL, 0xB9);
 //&*&*&*HY1_120911: reduce headset pop noise when DUT shutdowns
 	snd_soc_write(aic3262_codec, HPR_VOL, 0xB9);
-//&*&*&*HY2_120911: reduce headset pop noise when DUT shutdowns		
-	snd_soc_write(aic3262_codec, SPK_AMP_CNTL_R1, 0x00);	
+//&*&*&*HY2_120911: reduce headset pop noise when DUT shutdowns
+	snd_soc_write(aic3262_codec, SPK_AMP_CNTL_R1, 0x00);
 	snd_soc_write(aic3262_codec, HP_AMP_CNTL_R1, 0x00);
 
 	return NOTIFY_DONE;
@@ -939,7 +935,7 @@ static const struct snd_kcontrol_new aic3262_snd_controls[] = {
 	SOC_DOUBLE("IN1 LO BYPASS VOLUME" , LINE_AMP_CNTL_R2, 3, 0, 3, 1),
 	SOC_ENUM("Input CM mode", input_cm_mode),
 	SOC_ENUM("Output CM mode", output_cm_mode),
-//&*&*&*BC1_120516: reduce headset pop noise	
+//&*&*&*BC1_120516: reduce headset pop noise
 	SOC_SINGLE_EXT("Headphone Driver volume switch", 0x0, 0, 7, 0, get_headset_event_hp, set_headset_event_hp),
 //&*&*&*BC2_120516: reduce headset pop noise
 //&*&*&*BC1_120530: add audio srs function
@@ -1036,7 +1032,7 @@ static const struct aic3262_rate_divs aic3262_divs[] = {
 	//{11289600, 44100, 1, 8, 52, 128, 1, 2, 64, 1, 4, 4, //&*&*&*BC clkon = mclk
 	//	{{0, 60, 0}, {0, 61, 4} } },
 	{11289600, 44100, 1, 8, 0, 128, 2, 8, 64, 2, 16, 4, //&*&*&*BC clkon = mclk
-		{{0, 60, 0}, {0, 61, 1} } },			
+		{{0, 60, 0}, {0, 61, 1} } },
 #endif
 
 #ifdef CONFIG_MINI_DSP
@@ -1051,13 +1047,13 @@ static const struct aic3262_rate_divs aic3262_divs[] = {
 //&*&*&*BC1_150514: fix the issue that audio sounds have noise
 	/*{12288000, 48000, 1, 8, 52, 128, 8, 2, 128, 8, 12, 4, // for DMIC, 8K SR
 		{{0, 60, 1}, {0, 61, 1} } },*/
-//&*&*&*BC1_120516: modify the audio record parameters to pass CTS ASR			
+//&*&*&*BC1_120516: modify the audio record parameters to pass CTS ASR
 //	{12288000, 48000, 1, 8, 52, 128, 1, 2, 128, 1, 12, 4, //&*&*&*BC clkon = mclk
 //		{{0, 60, 1}, {0, 61, 1} } },
 	{12288000, 48000, 1, 8, 0, 128, 2, 8, 64, 2, 16, 4, //&*&*&*BC clkon = mclk
 		{{0, 60, 0}, {0, 61, 0} } },
-//&*&*&*BC2_120516: modify the audio record parameters to pass CTS ASR	
-//&*&*&*BC2_150514: fix the issue that audio sounds have noise					
+//&*&*&*BC2_120516: modify the audio record parameters to pass CTS ASR
+//&*&*&*BC2_150514: fix the issue that audio sounds have noise
 	{24000000, 48000, 1, 4, 960, 128, 4, 4, 128, 4, 4, 4,
 		{{0, 60, 1}, {0, 61, 1} } },
 #endif
@@ -1075,58 +1071,6 @@ static const struct aic3262_rate_divs aic3262_divs[] = {
 };
 
 
-
-/*
-*----------------------------------------------------------------------------
-* Function : aic3262_multi_i2s_dump_regs
-* Purpose  : This function is to mute or unmute the left and right DAC
-*
-*----------------------------------------------------------------------------
-*/
-static void aic3262_multi_i2s_dump_regs(struct snd_soc_dai *dai)
-{
-	struct snd_soc_codec *codec = dai->codec;
-	struct aic3262_priv *aic3262 = snd_soc_codec_get_drvdata(codec);
-	unsigned int counter;
-
-	DBG(KERN_INFO "#%s: Dai Active %d ASI%d REGS DUMP\n",
-		__func__, aic3262->active_count, dai->id);
-
-
-	DBG(KERN_INFO "#Page0 REGS..\n");
-	for (counter = 0; counter < 85; counter++) {
-		DBG(KERN_INFO "#%2d -> 0x%x\n", counter,
-			snd_soc_read(codec, counter));
-	}
-
-	DBG(KERN_INFO "#Page1 REGS..\n");
-	for (counter = 128; counter < 176; counter++) {
-		DBG(KERN_INFO "#%2d -> 0x%x\n", (counter % 128),
-			snd_soc_read(codec, counter));
-	}
-
-	DBG(KERN_INFO "#Page4 REGS..\n");
-	for (counter = 512; counter < 631; counter++) {
-		DBG(KERN_INFO "#%2d -> 0x%x\n",
-			(counter % 128), snd_soc_read(codec, counter));
-	}
-
-	for (counter = 0; counter < MAX_ASI_COUNT; counter++) {
-		DBG(KERN_INFO "#ASI%d Frame %s @ %dHz Playback %d Record %d\n",
-		(counter + 1),
-		(aic3262->asiCtxt[counter].master == 1) ? "Master" : "Slave",
-		aic3262->asiCtxt[counter].sampling_rate,
-		aic3262->asiCtxt[counter].playback_mode,
-		aic3262->asiCtxt[counter].capture_mode);
-		DBG(KERN_INFO "#DAC Option [%d,%d] ADC Option %d WLEN %d\n\n",
-		aic3262->asiCtxt[counter].left_dac_output,
-		aic3262->asiCtxt[counter].right_dac_output,
-		aic3262->asiCtxt[counter].adc_input,
-		aic3262->asiCtxt[counter].word_len);
-	}
-	return;
-}
-
 /*
  *----------------------------------------------------------------------------
  * Function : aic3262_multi_i2s_mute
@@ -1136,33 +1080,23 @@ static void aic3262_multi_i2s_dump_regs(struct snd_soc_dai *dai)
  */
 static int aic3262_multi_i2s_mute(struct snd_soc_dai *dai, int mute)
 {
-	struct snd_soc_codec *codec = dai->codec;
-	struct aic3262_priv *aic3262 = snd_soc_codec_get_drvdata(codec);
-
 	DBG(KERN_INFO "#%s : mute entered with %d\n", __func__, mute);
 
-	/* If we are doing both Recording and Playback on this DAI interface,
-	* do not MUTE the Codec.
-	*/
-	if (mute && (aic3262->asiCtxt[dai->id - 1].asi_active > 1)) {
-		DBG("#%s Cannot Mute the ASI%d Now..\n",
-			__func__, dai->id);
-	} else {
-		switch (dai->id) {
-		case 1:
-			aic3262_multi_i2s_asi1_mute(dai, mute);
-		break;
-		case 2:
-			aic3262_multi_i2s_asi2_mute(dai, mute);
-		break;
-		case 3:
-			aic3262_multi_i2s_asi3_mute(dai, mute);
-		break;
-		default:
-			printk(KERN_ERR "#%s: Invalid DAI id\n", __func__);
-			return -EINVAL;
-		}
+	switch (dai->id) {
+	case 1:
+		aic3262_multi_i2s_asi1_mute(dai, mute);
+	break;
+	case 2:
+		aic3262_multi_i2s_asi2_mute(dai, mute);
+	break;
+	case 3:
+		aic3262_multi_i2s_asi3_mute(dai, mute);
+	break;
+	default:
+		printk(KERN_ERR "#%s: Invalid DAI id\n", __func__);
+		return -EINVAL;
 	}
+
 	DBG(KERN_INFO "#%s : mute ended\n", __func__);
 	return 0;
 }
@@ -1177,12 +1111,8 @@ static int aic3262_multi_i2s_mute(struct snd_soc_dai *dai, int mute)
 */
 static int aic3262_multi_i2s_asi1_mute(struct snd_soc_dai *dai, int mute)
 {
-	struct snd_soc_codec *codec = dai->codec;
-	struct aic3262_priv *aic3262 = snd_soc_codec_get_drvdata(codec);
-
 	DBG(KERN_INFO "#%s : mute %d started\n", __func__, mute);
 
-	
 	//if(mute)
 	//	firstbootcount = 1;
 
@@ -1224,7 +1154,7 @@ static int aic3262_multi_i2s_asi1_mute(struct snd_soc_dai *dai, int mute)
 		snd_soc_write(codec, ADC_FINE_GAIN,(0X00 & 0x77) | 0x0);
 		/*aic3262_multi_i2s_dump_regs(dai);*/
 	}
-	
+
 #endif
 
 	DBG(KERN_INFO "#%s : mute %d ended\n", __func__, mute);
@@ -1717,7 +1647,7 @@ static int aic3262_multi_i2s_set_dai_sysclk(struct snd_soc_dai *codec_dai,
 	case AIC3262_FREQ_12000000:
 	case AIC3262_FREQ_12288000:
 	case AIC3262_FREQ_24000000:
-	case AIC3262_FREQ_11289600:	
+	case AIC3262_FREQ_11289600:
 		aic3262->sysclk = freq;
 		return 0;
 		break;
@@ -1755,8 +1685,7 @@ static int aic3262_multi_i2s_set_dai_pll(struct snd_soc_dai *codec_dai,
 static int aic3262_asi1_clk_config(struct snd_soc_codec *codec,
 		struct snd_pcm_hw_params *params)
 {
-	u8 bclk_N_value, wclk_N_value;
-	u8 minidspD_data, minidspA_data;
+	u8 minidspA_data;
 	u8 regval;
 
 	struct aic3262_priv *aic3262 = snd_soc_codec_get_drvdata(codec);
@@ -1806,7 +1735,7 @@ static int aic3262_asi1_clk_config(struct snd_soc_codec *codec,
 static int aic3262_asi2_clk_config(struct snd_soc_codec *codec,
 		struct snd_pcm_hw_params *params)
 {
-	u8 bclk_N_value, wclk_N_value, minidspD_data, minidspA_data;
+	u8 minidspA_data;
 	u8 regval;
 
 	struct aic3262_priv *aic3262 = snd_soc_codec_get_drvdata(codec);
@@ -1859,7 +1788,7 @@ static int aic3262_asi2_clk_config(struct snd_soc_codec *codec,
 static int aic3262_asi3_clk_config(struct snd_soc_codec *codec,
 		struct snd_pcm_hw_params *params)
 {
-	u8 bclk_N_value, wclk_N_value, minidspD_data, minidspA_data;
+	u8 minidspD_data, minidspA_data;
 	u8 regval;
 
 	struct aic3262_priv *aic3262 = snd_soc_codec_get_drvdata(codec);
@@ -1906,7 +1835,7 @@ static int aic3262_multi_i2s_hw_params(struct snd_pcm_substream *substream,
 			struct snd_pcm_hw_params *params,
 			struct snd_soc_dai *dai)
 {
-	int i, j;
+	int i;
 	u8 data;
 	u16 regoffset = 0;
 	u8 dacpath = 0;
@@ -2196,7 +2125,7 @@ static int aic3262_multi_i2s_hw_params(struct snd_pcm_substream *substream,
 * We can use this function to disable the DAC and ADC specific inputs from the
 * individual ASI Ports of the Audio Codec.
 */
-static int aic3262_multi_i2s_shutdown(struct snd_pcm_substream *substream,
+void aic3262_multi_i2s_shutdown(struct snd_pcm_substream *substream,
 			struct snd_soc_dai *dai)
 {
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
@@ -2204,7 +2133,6 @@ static int aic3262_multi_i2s_shutdown(struct snd_pcm_substream *substream,
 	struct aic3262_priv *aic3262 = snd_soc_codec_get_drvdata(codec);
 
 	u8 value;
-	u8 dacpath;
 	u8 adcpath;
 	u16 dacregoffset = 0;
 	u16 adcregoffset = 0;
@@ -2337,7 +2265,7 @@ static int aic3262_multi_i2s_shutdown(struct snd_pcm_substream *substream,
 			aic3262->active_count--;
 	}
 err:
-	return 0;
+	return;
 }
 
 
@@ -2662,15 +2590,15 @@ static const struct aic3262_configs aic3262_reg_init[] = {
 	{0, POWER_CONF, 0x00},	 /* Disconnecting AVDD-DVD weak link*/
 	{0, REF_PWR_DLY, 0x01},
 	{0, CM_REG, 0x00},	/*CM - default*/
-	
+
 	//{0, PUMP_CNTL_R3, 0x31},
 	{0, PUMP_CNTL_R3, 0x10},
-		
+
 	{0, PASI_DAC_DP_SETUP,  0x00},	/*DAC */
 	{0, DAC_MVOL_CONF,  0x00},	/*DAC un-muted*/
 	{0, HP_AMP_CNTL_R1, 0x03},	//reduce pop noise 0x03
 	/* set default volumes */
-	{0, DAC_LVOL, 0xFB},	//-2.5dB	
+	{0, DAC_LVOL, 0xFB},	//-2.5dB
 	{0, DAC_RVOL, 0xFB},	//-2.5dB
 //&*&*&*BC1_120516: reduce headset pop noise
 	//{0, HPL_VOL,  0x85},
@@ -2705,7 +2633,7 @@ static const struct aic3262_configs aic3262_reg_init[] = {
 	{0, PLL_CLKIN_REG, 0x00},	/*PLL CLKIN*/
 	{0, PLL_PR_POW_REG, 0x11},	/*PLL Power=0-down, P=1, R=1 vals*/
 	{0, PLL_CKIN_DIV, 0x01},
-		
+
 	//{0, 0x3d, 1},
 
 	//{0, LMIC_PGA_PIN, 0x0},	/*IN1_L select - - 10k -LMICPGA_P*/
@@ -2754,14 +2682,14 @@ static const struct aic3262_configs aic3262_reg_init[] = {
 	//{0, INT1_CNTL, 0x40},
 	/*{0, TIMER_REG, 0x8c},*/
 	{0, INT_FMT, 0x40},	// multiple pulses
-	//{0, INT_FMT, 0x00},	// one pulse	
+	//{0, INT_FMT, 0x00},	// one pulse
 	{0, GPIO1_IO_CNTL, 0x14},
 	{0, HP_DETECT, 0x16},
 //&*&*&*BC2_120514: use gpio interrupt to detect headset
 	{0, LINE_AMP_CNTL_R1, 0x03},
-//&*&*&*BC1_120516: modify the audio record parameters to pass CTS ASR	
-//	{0, 61, 1},				//use the PR1 for ADC 
-//&*&*&*BC2_120516: modify the audio record parameters to pass CTS ASR	
+//&*&*&*BC1_120516: modify the audio record parameters to pass CTS ASR
+//	{0, 61, 1},				//use the PR1 for ADC
+//&*&*&*BC2_120516: modify the audio record parameters to pass CTS ASR
 #if defined(CONFIG_MINI_DSP)
 	{0, 60, 0},
 	{0, 61, 0},
@@ -2777,38 +2705,36 @@ static const struct aic3262_configs aic3262_reg_init[] = {
 static int reg_init_size =
 	sizeof(aic3262_reg_init) / sizeof(struct aic3262_configs);
 
-//&*&*&*BC1_120516: modify the audio record parameters to pass CTS ASR	
+//&*&*&*BC1_120516: modify the audio record parameters to pass CTS ASR
 static const struct aic3262_configs aic3262_minidsp_reg_init[] = {
 	{40, 152, 0x7F},	//B40_P1_R24
-	{40, 153, 0x91},	//B40_P1_R25	
+	{40, 153, 0x91},	//B40_P1_R25
 	{40, 154, 0x5B},	//B40_P1_R26
-	
+
 	{40, 156, 0x80},	//B40_P1_R28
-	{40, 157, 0x6E},	//B40_P1_R39	
+	{40, 157, 0x6E},	//B40_P1_R39
 	{40, 158, 0xA4},	//B40_P1_R30
-	
+
 	{40, 160, 0x7F},	//B40_P1_R32
-	{40, 161, 0x2A},	//B40_P1_R33	
+	{40, 161, 0x2A},	//B40_P1_R33
 	{40, 162, 0x3B},	//B40_P1_R34
-	
+
 	{40, 288, 0x7F},	//B40_P1_R24
-	{40, 289, 0x91},	//B40_P1_R25	
+	{40, 289, 0x91},	//B40_P1_R25
 	{40, 290, 0x5B},	//B40_P1_R26
-	
+
 	{40, 292, 0x80},	//B40_P1_R28
-	{40, 293, 0x6E},	//B40_P1_R39	
+	{40, 293, 0x6E},	//B40_P1_R39
 	{40, 294, 0xA4},	//B40_P1_R30
-	
+
 	{40, 296, 0x7F},	//B40_P1_R32
-	{40, 297, 0x2A},	//B40_P1_R33	
+	{40, 297, 0x2A},	//B40_P1_R33
 	{40, 298, 0x3B},	//B40_P1_R34
 
 	{40, 1, 0x04},
 };
 
-static int reg_minidsp_init_size =
-	sizeof(aic3262_minidsp_reg_init) / sizeof(struct aic3262_configs);
-//&*&*&*BC2_120516: modify the audio record parameters to pass CTS ASR	
+//&*&*&*BC2_120516: modify the audio record parameters to pass CTS ASR
 
 static const unsigned int adc_ma_tlv[] = {
 TLV_DB_RANGE_HEAD(4),
@@ -3069,11 +2995,6 @@ SOC_ENUM_SINGLE_DECL(asi3bclk_enum, ASI3_BCLK_N_CNTL, 0, asi3bclk_text);
 static const struct snd_kcontrol_new asi3bclk_control =
 	SOC_DAPM_ENUM("ASI3_BCLK Route", asi3bclk_enum);
 
-static int aic326x_hp_event(struct snd_soc_dapm_widget *w,
-		struct snd_kcontrol *kcontrol, int event)
-{
-	return 0;
-}
 static int pll_power_on_event(struct snd_soc_dapm_widget *w,
 	struct snd_kcontrol *kcontrol, int event)
 {
@@ -3110,7 +3031,7 @@ static int polling_loop(struct snd_soc_codec *codec, unsigned int reg,
 //&*&*&*BC1_120619: fix cts asr issue
 	//printk("%s: exiting with count value %d \n", __func__, counter);
 	mdelay(4);
-//&*&*&*BC2_120619: fix cts asr issue	
+//&*&*&*BC2_120619: fix cts asr issue
 	if(counter >= 1000)
 		return -1;
 	return 0;
@@ -3265,10 +3186,10 @@ static const struct snd_soc_dapm_widget aic3262_dapm_widgets[] = {
 	SND_SOC_DAPM_PGA_E("HPR Driver", HP_AMP_CNTL_R1, 0, 0, NULL, 0,
 				aic326x_hp_event, SND_SOC_DAPM_POST_PMU),
 	*/
-	
+
 	SND_SOC_DAPM_PGA("HPL Driver", SND_SOC_NOPM, 0, 0, NULL, 0),
 	SND_SOC_DAPM_PGA("HPR Driver", SND_SOC_NOPM, 0, 0, NULL, 0),
-				
+
 //&*&*&*BC2_120516: reduce headset pop noise
 
 	/* dapm widget (path domain) for LOL Output Mixer */
@@ -3912,13 +3833,12 @@ void aic3262_write_reg_cache(struct snd_soc_codec *codec,
  *----------------------------------------------------------------------------
  */
 
-u8 aic3262_read(struct snd_soc_codec *codec, u16 reg)
+unsigned int aic3262_read(struct snd_soc_codec *codec, unsigned int reg)
 {
 	struct aic3262_priv *aic3262 = snd_soc_codec_get_drvdata(codec);
 	u8 value;
 	u8 page = reg / 128;
 	u16 *cache = codec->reg_cache;
-	u16 cmd;
 	u8 data = (u8)reg;
 	//DBG(KERN_INFO "%s : entering\n",__func__);
 	reg = reg % 128;
@@ -3963,7 +3883,7 @@ u8 aic3262_read(struct snd_soc_codec *codec, u16 reg)
  *
  *----------------------------------------------------------------------------
  */
-int aic3262_write(struct snd_soc_codec *codec, u16 reg, u8 value)
+int aic3262_write(struct snd_soc_codec *codec, unsigned int reg, unsigned int value)
 {
 	struct aic3262_priv *aic3262 = snd_soc_codec_get_drvdata(codec);
 	u8 data[2];
@@ -4178,7 +4098,7 @@ int reg_def_conf(struct snd_soc_codec *codec)
 
 #if 0
 
-//&*&*&*BC1_120516: modify the audio record parameters to pass CTS ASR	
+//&*&*&*BC1_120516: modify the audio record parameters to pass CTS ASR
 int reg_minidsp_def_conf(struct snd_soc_codec *codec)
 {
 	int i = 0, ret;
@@ -4199,7 +4119,7 @@ int reg_minidsp_def_conf(struct snd_soc_codec *codec)
 		if (ret)
 			break;
 	}
-	
+
 	ret = aic3262_change_page(codec, 0);
 	if (ret != 0)
 		return ret;
@@ -4207,13 +4127,13 @@ int reg_minidsp_def_conf(struct snd_soc_codec *codec)
 	ret = aic3262_change_book(codec, 0);
 	if (ret != 0)
 		return ret;
-	
+
 	printk("reg_minidsp_def_conf\n");
-	
+
 	DBG(KERN_INFO "#%s: Done..\n", __func__);
 	return ret;
 }
-//&*&*&*BC2_120516: modify the audio record parameters to pass CTS ASR	
+//&*&*&*BC2_120516: modify the audio record parameters to pass CTS ASR
 
 #endif
 
@@ -4230,12 +4150,12 @@ void dsp_regw(struct snd_soc_codec *codec, u8 addr, u8 val)
 
 int reg_minidsp_SRS_def_conf(struct snd_soc_codec *codec)
 {
-	int i = 0, ret;
+	int i = 0, ret = 0;
+
 	DBG(KERN_INFO "#%s: Invoked..\n", __func__);
-	int oval;
-	
-	mutex_lock(&codec_io_mutex);	
-	
+
+	mutex_lock(&codec_io_mutex);
+
 	//oval = snd_soc_read(codec, PASI_DAC_DP_SETUP);
 	//snd_soc_write(codec, PASI_DAC_DP_SETUP, 0);
 
@@ -4244,40 +4164,40 @@ int reg_minidsp_SRS_def_conf(struct snd_soc_codec *codec)
 	for (i = 0; i < ARRAY_SIZE(main_minidsp_pre); i++) {
 		dsp_regw(codec, main_minidsp_pre[i].reg_off,
 			main_minidsp_pre[i].reg_val);
-		
+
 	}
-	
+
 	printk("ARRAY_SIZE = %d\n",ARRAY_SIZE(main_minidsp_pre));
-	
+
 	for (i = 0; i < ARRAY_SIZE(main_minidsp_D_values); i++) {
 		dsp_regw(codec, main_minidsp_D_values[i].reg_off,
 			main_minidsp_D_values[i].reg_val);
-		
+
 	}
-	
+
 	printk("ARRAY_SIZE = %d\n",ARRAY_SIZE(main_minidsp_D_values));
-	
+
 	for (i = 0; i < ARRAY_SIZE(main_minidsp_A_values); i++) {
 		dsp_regw(codec, main_minidsp_A_values[i].reg_off,
 			main_minidsp_A_values[i].reg_val);
-		
+
 	}
-	
+
 	printk("ARRAY_SIZE = %d\n",ARRAY_SIZE(main_minidsp_A_values));
 
-	
+
 	for (i = 0; i < ARRAY_SIZE(main_minidsp_post); i++) {
 		dsp_regw(codec, main_minidsp_post[i].reg_off,
-			main_minidsp_post[i].reg_val);		
-	}	
-	
+			main_minidsp_post[i].reg_val);
+	}
+
 	//snd_soc_write(codec, PASI_DAC_DP_SETUP, oval);
-	
-	printk("ARRAY_SIZE = %d\n",ARRAY_SIZE(main_minidsp_post));	
+
+	printk("ARRAY_SIZE = %d\n",ARRAY_SIZE(main_minidsp_post));
 	printk("reg_minidsp_SRS_def_conf\n");
 
 	mutex_unlock(&codec_io_mutex);
-	
+
 	DBG(KERN_INFO "#%s: Done..\n", __func__);
 	return ret;
 }
@@ -4334,8 +4254,6 @@ int i2c_verify_book0(struct snd_soc_codec *codec)
 static int aic3262_set_bias_level(struct snd_soc_codec *codec,
 			enum snd_soc_bias_level level)
 {
-	struct aic3262_priv *aic3262 = snd_soc_codec_get_drvdata(codec);
-	u8 value;
 	switch (level) {
 		/* full On */
 	case SND_SOC_BIAS_ON:
@@ -4381,28 +4299,17 @@ static int aic3262_set_bias_level(struct snd_soc_codec *codec,
  */
 static int aic3262_suspend(struct snd_soc_codec *codec, pm_message_t state)
 {
-	struct aic3262_priv *aic3262 = snd_soc_codec_get_drvdata(codec);
 	DBG(KERN_INFO "#%s: Invoked..\n", __func__);
-	#if 0
-	if (aic3262)
-		disable_irq(aic3262->irq);
 
-	aic3262_set_bias_level(codec, SND_SOC_BIAS_STANDBY);
-
-	#endif
-	
 	printk("aic3262_suspend\n");
 	snd_soc_write(codec, PUMP_CNTL_R3, 0x10);
-		
-//&*&*&*BC1_120516: reduce headset pop noise	
+
+//&*&*&*BC1_120516: reduce headset pop noise
 	//if(headset_insert)
 	snd_soc_update_bits(codec, HP_AMP_CNTL_R1, BIT0|BIT1, 0);
-	
-	snd_soc_update_bits(codec, LINE_AMP_CNTL_R1, BIT0|BIT1, 0);	
-	
 
-			
-//&*&*&*BC2_120516: reduce headset pop noise	
+	snd_soc_update_bits(codec, LINE_AMP_CNTL_R1, BIT0|BIT1, 0);
+//&*&*&*BC2_120516: reduce headset pop noise
 	return 0;
 }
 
@@ -4415,48 +4322,12 @@ static int aic3262_suspend(struct snd_soc_codec *codec, pm_message_t state)
  */
 static int aic3262_resume(struct snd_soc_codec *codec)
 {
-	int i;
-	u8 data[2];
-	int ret = 0;
-	struct aic3262_priv *aic3262 = snd_soc_codec_get_drvdata(codec);
-	u8 *cache = codec->reg_cache;
 	DBG(KERN_INFO "#%s: Invoked..\n", __func__);
-
 
 	mutex_lock(&codec_io_mutex);
 	aic3262_change_page(codec, 0);
 	aic3262_change_book(codec, 0);
 	mutex_unlock(&codec_io_mutex);
-#if 0
-	ret = aic3262_change_page(codec, 0);
-	if (ret)
-		return ret;
-#if defined(EN_REG_CACHE)
-	/* Sync reg_cache with the hardware */
-	for (i = 0; i < ARRAY_SIZE(aic3262_reg); i++) {
-		data[0] = i % 128;
-		data[1] = cache[i];
-#if defined(LOCAL_REG_ACCESS)
-		mutex_lock(&codec_io_mutex);
-		codec->hw_write(codec, data, 2);
-		mutex_lock(&codec_io_mutex);
-#else
-		ret = snd_soc_write(codec, data[0], data[1]);
-		if (ret)
-			break;
-#endif
-	}
-#endif
-	if (!ret) {
-		mutex_lock(&codec_io_mutex);
-		aic3262_change_page(codec, 0);
-		mutex_lock(&codec_io_mutex);
-		aic3262_set_bias_level(codec, SND_SOC_BIAS_ON);
-
-		if (aic3262)
-			enable_irq(aic3262->irq);
-	}
-#endif
 
 	printk("aic3262_resume\n");
 	snd_soc_write(codec, PUMP_CNTL_R3, 0x10);
@@ -4465,7 +4336,7 @@ static int aic3262_resume(struct snd_soc_codec *codec)
 	//if(headset_insert)
 	snd_soc_update_bits(codec, HP_AMP_CNTL_R1, BIT0|BIT1, BIT0|BIT1);
 
-	snd_soc_update_bits(codec, LINE_AMP_CNTL_R1, BIT0|BIT1, BIT0|BIT1);		
+	snd_soc_update_bits(codec, LINE_AMP_CNTL_R1, BIT0|BIT1, BIT0|BIT1);
 //&*&*&*BC2_120516: reduce headset pop noise
 	return 0;
 }
@@ -4476,7 +4347,7 @@ static int aic3262_resume(struct snd_soc_codec *codec)
  *
  *----------------------------------------------------------------------------
  */
-unsigned int aic3262_hw_read_spi(struct snd_soc_codec *codec, u8 data)
+unsigned int aic3262_hw_read_spi(struct snd_soc_codec *codec, unsigned int data)
 {
 	u8 buf;
 	int rc;
@@ -4507,9 +4378,9 @@ int aic326x_headset_type(struct snd_soc_codec *codec, int jack_insert)
 {
 	int jack_type = AIC326X_NO_JACK;
 	unsigned int value;
-	unsigned int micbits, hsbits = 0;	
+	unsigned int micbits, hsbits = 0;
 
-	//printk("%s\n", __FUNCTION__);	
+	//printk("%s\n", __FUNCTION__);
 
 	if (jack_insert) {
 
@@ -4525,7 +4396,7 @@ int aic326x_headset_type(struct snd_soc_codec *codec, int jack_insert)
 		msleep(100);
 		value = snd_soc_read(codec, MIC_BIAS_CNTL);
 		printk( "MIC_BIAS_CNTL 0x%x\n", value);
-//&*&*&*HY2_120911: reduce headset pop noise when headset inserts or removes		
+//&*&*&*HY2_120911: reduce headset pop noise when headset inserts or removes
 		aic3262_change_page(codec, 0);
 
 			/* Read the Jack Status Register*/
@@ -4540,7 +4411,7 @@ int aic326x_headset_type(struct snd_soc_codec *codec, int jack_insert)
     	hsbits = value & DAC_FLAG_HS_MASKBITS;
 		DBG(KERN_INFO "hsbits 0x%x\n", hsbits);
 //&*&*&*HY2_120911: Correct headset insertion/removal detection flag
-		
+
 		value = snd_soc_read(codec, DAC_FLAG_R1);
 		DBG(KERN_INFO "reg37 0x%x\n", value);
 
@@ -4556,20 +4427,20 @@ int aic326x_headset_type(struct snd_soc_codec *codec, int jack_insert)
 			//DBG(KERN_INFO "headphone\n");
 			printk("headphone\n");
 			jack_type = AIC326X_HEADPHO_DET;
-			snd_soc_update_bits(codec, MIC_BIAS_CNTL, BIT6, 0);		
+			snd_soc_update_bits(codec, MIC_BIAS_CNTL, BIT6, 0);
 		}
 		else
 		{
 			printk("headset\n");
 			jack_type = AIC326X_HEADSET_DET;
-			
-		}*/	
+
+		}*/
 
 		/* Headset Detected - only with capless */
-//&*&*&*BC1_120614: detect fake headset		
+//&*&*&*BC1_120614: detect fake headset
 		if(hsbits != 0 )
-		{	
-		
+		{
+
 		if (micbits == DAC_FLAG_R1_MIC) {
 			//DBG(KERN_INFO "headset\n");
 			printk("headset\n");
@@ -4578,11 +4449,11 @@ int aic326x_headset_type(struct snd_soc_codec *codec, int jack_insert)
 		else
 		{
 			printk("headphone\n");
-			jack_type = AIC326X_HEADPHO_DET;	
-			
+			jack_type = AIC326X_HEADPHO_DET;
+
 			snd_soc_update_bits(codec, MIC_BIAS_CNTL, BIT6, 0);
-		}		
-//&*&*&*BC1_120516: reduce headset pop noise		
+		}
+//&*&*&*BC1_120516: reduce headset pop noise
 		//headset_insert = 1;
 		snd_soc_update_bits(codec, HP_AMP_CNTL_R1, BIT0|BIT1, BIT0|BIT1);
 		//snd_soc_update_bits(codec, LINE_AMP_CNTL_R1, BIT0|BIT1, 0);
@@ -4594,20 +4465,20 @@ int aic326x_headset_type(struct snd_soc_codec *codec, int jack_insert)
 			printk("NO headphone\n");
 //&*&*&*HY1_120911: reduce headset pop noise when headset inserts or removes
 			snd_soc_update_bits(codec, HP_AMP_CNTL_R1, BIT0|BIT1, 0);
-//&*&*&*HY2_120911: reduce headset pop noise when headset inserts or removes			
+//&*&*&*HY2_120911: reduce headset pop noise when headset inserts or removes
 			snd_soc_update_bits(codec, MIC_BIAS_CNTL, BIT6, 0);
 			jack_type = AIC326X_NO_JACK;
 			//headset_insert = 0;
-		}	
-//&*&*&*BC2_120614: detect fake headset			
-		
+		}
+//&*&*&*BC2_120614: detect fake headset
+
 	} else {
 
 		printk("NO headphone\n");
 //&*&*&*HY1_120911: reduce headset pop noise when headset inserts or removes
 			snd_soc_update_bits(codec, HP_AMP_CNTL_R1, BIT0|BIT1, 0);
-//&*&*&*HY2_120911: reduce headset pop noise when headset inserts or removes	
-			
+//&*&*&*HY2_120911: reduce headset pop noise when headset inserts or removes
+
 		snd_soc_update_bits(codec, MIC_BIAS_CNTL, BIT6, 0);
 		jack_type = AIC326X_NO_JACK;
 //&*&*&*BC1_120516: reduce headset pop noise
@@ -4623,9 +4494,9 @@ int aic326x_headset_type(struct snd_soc_codec *codec, int jack_insert)
 	value = snd_soc_read(codec, HP_AMP_CNTL_R1);
 	DBG(KERN_INFO "HP_AMP_CNTL_R1 0x%x\n", value);
 //&*&*&*HY2_120911: reduce headset pop noise when headset inserts or removes
-	
+
 	snd_soc_write(codec, HP_DETECT, 0x16);
-	
+
 	return jack_type;
 	//return AIC326X_NO_JACK;
 }
@@ -4687,7 +4558,7 @@ static irqreturn_t aic3262_jack_handler(int irq, void *data)
 	}*/
 	else
 	{
-			
+
 	/* Headset Detected - only with capless */
 	if (micbits == DAC_FLAG_R1_MIC) {
 		DBG(KERN_INFO "headset\n");
@@ -4700,9 +4571,9 @@ static irqreturn_t aic3262_jack_handler(int irq, void *data)
 		printk("headphone\n");
 		snd_soc_jack_report(aic3262->headset_jack,
 				SND_JACK_HEADPHONE, SND_JACK_HEADSET);
-		
-	}	
-	
+
+	}
+
 	}
 	DBG(KERN_INFO "%s--\n", __func__);
 	return IRQ_HANDLED;
@@ -4904,12 +4775,12 @@ static int aic3262_probe(struct snd_soc_codec *codec)
 		codec->read = aic3262_read;
 		codec->write = aic3262_write;
 	}
-	
-//&*&*&*BC1_120605: reset codec	
+
+//&*&*&*BC1_120605: reset codec
 	snd_soc_write(codec, RESET_REG, 0x01);
-	mdelay(20);	
+	mdelay(20);
 //&*&*&*BC2_120605: reset codec
-	
+
 	ret = reg_def_conf(codec);
 	if (ret != 0) {
 		printk(KERN_ERR "Failed to init TI codec: %d\n", ret);
@@ -4952,7 +4823,7 @@ static int aic3262_probe(struct snd_soc_codec *codec)
 	/*TODO*/
 	//snd_soc_write(codec, MIC_BIAS_CNTL, 0x66);
 	//snd_soc_write(codec, MIC_BIAS_CNTL, 0xDD);
-	snd_soc_write(codec, MIC_BIAS_CNTL, 0x99);		
+	snd_soc_write(codec, MIC_BIAS_CNTL, 0x99);
 
 #ifdef AIC3262_TiLoad
 	ret = aic3262_driver_init(codec);
@@ -4967,23 +4838,23 @@ static int aic3262_probe(struct snd_soc_codec *codec)
 	aic3262_change_book(codec, 0x0);
 #endif
 
-//&*&*&*BC1_120516: modify the audio record parameters to pass CTS ASR	
+//&*&*&*BC1_120516: modify the audio record parameters to pass CTS ASR
 //	reg_minidsp_def_conf(codec);
-//&*&*&*BC2_120516: modify the audio record parameters to pass CTS ASR	
+//&*&*&*BC2_120516: modify the audio record parameters to pass CTS ASR
 //&*&*&*BC1_120530: add audio srs function
-	reg_minidsp_SRS_def_conf(codec);	
+	reg_minidsp_SRS_def_conf(codec);
 	//apply_patch_d_b1(codec, patch_speaker, ARRAY_SIZE(patch_speaker));
-	apply_patch_d_b1(codec, patch_speaker_drc, ARRAY_SIZE(patch_speaker_drc));	
+	apply_patch_d_b1(codec, patch_speaker_drc, ARRAY_SIZE(patch_speaker_drc));
 	aic3262_change_book(codec, 0x0);
 //&*&*&*BC2_120530: add audio srs function
-	
+
 #ifdef MULTICONFIG_SUPPORT
 	aic3262_add_multiconfig_controls(codec);
 #endif
 
 //&*&*&*BC1_120531: fix the pop noise when system shutdown
 	aic3262_codec = codec;
-	
+
 	ret = register_reboot_notifier(&aic3262_shutdown_notifier);
 	if (ret)
 		printk(KERN_ERR "AIC3111 Failed to register reboot notifier\n");
@@ -5040,91 +4911,6 @@ static struct snd_soc_codec_driver soc_codec_dev_aic3262 = {
 
 /*
  *----------------------------------------------------------------------------
- * Function : aic3262_codec_probe
- * Purpose  : This function attaches the i2c client and initializes
- *				AIC3262 CODEC.
- *            NOTE:
- *            This function is called from i2c core when the I2C address is
- *            valid.
- *            If the i2c layer weren't so broken, we could pass this kind of
- *            data around
- *
- *----------------------------------------------------------------------------
- */
-static __devinit int aic3262_codec_probe(struct i2c_client *i2c,
-			const struct i2c_device_id *id)
-{
-	int ret;
-
-	struct aic3262_priv *aic3262;
-	struct aic326x_pdata *pdata = NULL;
-
-	DBG(KERN_INFO "#%s: Entered\n", __func__);
-	printk(" entered aic3262_codec_probe \n");
-
-	aic3262 = kzalloc(sizeof(struct aic3262_priv), GFP_KERNEL);
-
-	if (!aic3262) {
-		printk(KERN_ERR "#%s: Unable to Allocate Priv struct..\n",
-			__func__);
-		return -ENOMEM;
-	}
-
-        pdata = i2c->dev.platform_data;
-        if ((pdata != NULL) && (pdata->reset_pin != 0)) {
-                if( gpio_request(pdata->reset_pin, "aic3262_reset_pin") < 0) {
-                        printk("Failed to request aic3262_reset_pin 0x%x\n", pdata->reset_pin);
-                        return -1;
-                }
-                gpio_direction_output(pdata->reset_pin, 1);
-                msleep(5);
-                gpio_set_value(pdata->reset_pin, 0);
-                msleep(15);
-                gpio_set_value(pdata->reset_pin, 1);
-                msleep(20);
-        }
-	i2c_set_clientdata(i2c, aic3262);
-#if defined(LOCAL_REG_ACCESS)
-	aic3262->control_data = i2c;
-#endif
-	aic3262->bus_type =SND_SOC_I2C;
-	aic3262->control_type = SND_SOC_I2C;
-	aic3262->irq = i2c->irq;
-	aic3262->pdata = i2c->dev.platform_data;
-
-	/* The Configuration Support will be by default to 3 which
-	* holds the MAIN Patch Configuration.
-	*/
-	aic3262->current_dac_config[0] = -1;
-	aic3262->current_dac_config[1] = -1;
-	aic3262->current_adc_config[0] = -1;
-	aic3262->current_adc_config[1] = -1;
-
-	aic3262->mute_codec = 1;
-
-	aic3262->page_no = 0;
-	aic3262->book_no = 0;
-	aic3262->active_count = 0;
-	aic3262->dac_clkin_option = 3;
-	aic3262->adc_clkin_option = 3;
-
-	ret = snd_soc_register_codec(&i2c->dev,
-		&soc_codec_dev_aic3262,
-		tlv320aic3262_dai, ARRAY_SIZE(tlv320aic3262_dai));
-
-	if (ret < 0)
-		{
-		printk(" codec DAI registration failed\n");
-		kfree(aic3262);
-		}
-
-	DBG(KERN_INFO "#%s: Done ret %d\n", __func__, ret);
-	printk(" end of  aic3262_codec_probe \n");
-	return ret;
-}
-
-/*
- *----------------------------------------------------------------------------
  * Function : aic3262_i2c_remove
  * Purpose  : This function removes the i2c client and uninitializes
  *                              AIC3262 CODEC.
@@ -5148,34 +4934,6 @@ static const struct i2c_device_id tlv320aic3262_id[] = {
 };
 MODULE_DEVICE_TABLE(i2c, tlv320aic3262_id);
 
-static struct i2c_driver tlv320aic3262_i2c_driver = {
-	.driver = {
-		.name = "aic3262-codec",
-		.owner = THIS_MODULE,
-	},
-	.probe = aic3262_codec_probe,
-	.remove = __devexit_p(aic3262_i2c_remove),
-	.id_table = tlv320aic3262_id,
-};
-
-/*
- * This function forces any delayed work to be queued and run.
- */
-static int run_delayed_work(struct delayed_work *dwork)
-{
-	int ret;
-
-	/* cancel any work waiting to be queued. */
-	ret = cancel_delayed_work(dwork);
-
-	/* if there was any work waiting then we run it now and
-	 * wait for it's completion */
-	if (ret) {
-		schedule_delayed_work(dwork, 0);
-		flush_scheduled_work();
-	}
-	return ret;
-}
 static int aic3262_register(struct aic3262_priv *aic3262)
 {
 
@@ -5212,20 +4970,6 @@ void spi_cs_en(unsigned int cs, unsigned int cspin)
 		gpio_direction_output(cspin, 0);
 		udelay(1);
 	}
-}
-
-static struct regulator *kai_codec_reg;
-static int kai_codec_enable(void)
-{
-	if (kai_codec_reg == NULL) {
-		kai_codec_reg = regulator_get(NULL, "cdc_en");
-		if (WARN_ON(IS_ERR(kai_codec_reg)))
-			pr_err("%s: couldn't get regulator cdc_en: %ld\n",
-			       __func__, PTR_ERR(kai_codec_reg));
-		else
-			regulator_enable(kai_codec_reg);
-	}
-	return 0;
 }
 
 static int __devinit aic3262_spi_probe(struct spi_device *spi)

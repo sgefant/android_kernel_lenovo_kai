@@ -38,6 +38,7 @@
 #include <linux/usb/otg.h>
 #include <linux/gpio.h>
 #include <linux/wakelock.h>
+#include <linux/string.h>
 
 #define SMB349_CHARGE		0x00
 #define SMB349_CHRG_CRNTS	0x01
@@ -108,7 +109,7 @@ static struct wake_lock usb_lock;
 static int smb349_configure_charger(struct i2c_client *client, int value, int max_uA);
 static void smb349_early_suspend(struct early_suspend *h);
 static void smb349_late_resume(struct early_suspend *h);
-extern int bq27541_get_battery_rsoc();
+extern int bq27541_get_battery_rsoc(void);
 extern int tegra_get_host(int suspend);
 extern void max77663_OTG_alert(void* data);
 
@@ -685,21 +686,21 @@ error:
 	return ret;
 }
 
-static int smb349_disable_otg(struct regulator_dev *otg_rdev){	
-	struct i2c_client *client = charger->client;	
-	int ret;	
-	/* Disable OTG */	
-	ret = smb349_configure_otg(client, 0);	
-	if (ret < 0)		
-		goto error;	
-	/* configure charger */	
+static int smb349_disable_otg(struct regulator_dev *otg_rdev){
+	struct i2c_client *client = charger->client;
+	int ret;
+	/* Disable OTG */
+	ret = smb349_configure_otg(client, 0);
+	if (ret < 0)
+		goto error;
+	/* configure charger */
 	ret = smb349_configure_charger(client, 1, 0);
-	if (ret < 0)		
-		goto error;	
-	charger->is_otg_enabled = 0;	
+	if (ret < 0)
+		goto error;
+	charger->is_otg_enabled = 0;
 	return 0;
-error:	
-	dev_err(&client->dev, "%s() error in disabling"			
+error:
+	dev_err(&client->dev, "%s() error in disabling"
 			"otg..\n", __func__);
 	return ret;
 }
@@ -750,12 +751,13 @@ static ssize_t smb349_dump_reg_store(struct device *dev,
 	struct smb349_charger *chip = dev_get_drvdata(dev);
 	unsigned long val;
 	int error, ret;
-	char *tok;
+	char *tok, *buff;
 	int first = 1;
 	int addr = 0x00;
 
 	while (true) {
-		tok = strsep(&buf, ",");
+		buff = kstrdup(buf, GFP_KERNEL);
+		tok = strsep(&buff, ",");
 		if (!tok)
 			break;
 		error = strict_strtoul(tok, 10, &val);
@@ -847,8 +849,8 @@ static ssize_t smb349_suspend_charger_store(struct device *dev,
 								__func__);
 		goto error;
 	}
-	
-error: 
+
+error:
 	return count;
 
 }
@@ -884,7 +886,7 @@ static ssize_t smb349_enable_store(struct device *dev,
 			smb349_configure_charger(chip->client, 1, 1800*1000);
 		else if(charger->chrg_type == SMB349_USB)
 			smb349_configure_charger(chip->client, 1, 500*1000);
-		
+
 	} else {
 		printk("[smb349 charger]Enter %s, disable charging....\n", __func__);
 		smb349_configure_charger(chip->client, 0, 0);

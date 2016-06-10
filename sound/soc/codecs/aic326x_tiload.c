@@ -220,12 +220,12 @@ static ssize_t tiload_write(struct file *file, const char __user * buf,
  */
 static void aic3262_dump_page(struct snd_soc_codec *codec, u8 page, u8 *buf)
 {
-	int i;
 	mutex_lock(&codec_io_mutex);
 	aic3262_change_page(codec, page);
 	aic3262_spi_series_read(codec, 0, buf, codec_page_size);
 	mutex_unlock(&codec_io_mutex);
 #ifdef DEDUG
+	int i;
 	printk("[tiload]read reg_addr=%x, count=%x\n", 0, codec_page_size);
 	for (i=0; i< codec_page_size; i++)
 	{
