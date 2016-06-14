@@ -1418,26 +1418,28 @@ static int __devexit lis3dh_acc_remove(struct i2c_client *client)
 }
 
 #ifdef CONFIG_PM
-static int lis3dh_acc_resume(struct i2c_client *client)
+static int lis3dh_acc_resume(struct device *dev)
 {
-	struct lis3dh_acc_data *acc = i2c_get_clientdata(client);
+	struct lis3dh_acc_data *acc = dev_get_drvdata(dev);
 
 	if (acc->on_before_suspend)
 		return lis3dh_acc_enable(acc);
 	return 0;
 }
 
-static int lis3dh_acc_suspend(struct i2c_client *client, pm_message_t mesg)
+static int lis3dh_acc_suspend(struct device *dev)
 {
-	struct lis3dh_acc_data *acc = i2c_get_clientdata(client);
+	struct lis3dh_acc_data *acc = dev_get_drvdata(dev);
 
 	acc->on_before_suspend = atomic_read(&acc->enabled);
-	return lis3dh_acc_disable(acc);
+		return lis3dh_acc_disable(acc);
 }
 #else
 #define lis3dh_acc_suspend	NULL
 #define lis3dh_acc_resume	NULL
 #endif /* CONFIG_PM */
+
+static SIMPLE_DEV_PM_OPS(lis3dh_acc_pm, lis3dh_acc_suspend, lis3dh_acc_resume);
 
 static const struct i2c_device_id lis3dh_acc_id[]
 		= { { LIS3DH_ACC_DEV_NAME, 0 }, { }, };
@@ -1448,11 +1450,12 @@ static struct i2c_driver lis3dh_acc_driver = {
 	.driver = {
 			.owner = THIS_MODULE,
 			.name = LIS3DH_ACC_DEV_NAME,
+#ifdef CONFIG_PM
+			.pm = &lis3dh_acc_pm,
+#endif
 		  },
 	.probe = lis3dh_acc_probe,
 	.remove = __devexit_p(lis3dh_acc_remove),
-	.suspend = lis3dh_acc_suspend,
-	.resume = lis3dh_acc_resume,
 	.id_table = lis3dh_acc_id,
 };
 
