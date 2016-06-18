@@ -212,7 +212,7 @@ static int kai_disp1_check_fb(struct device *dev, struct fb_info *info);
 static struct platform_pwm_backlight_data kai_backlight_data = {
 	.pwm_id		= 0,
 	.max_brightness	= 255,
-	.dft_brightness	= 100/*224*/,
+	.dft_brightness	= 224,
 	.pwm_period_ns	= 100000,
 	.init		= kai_backlight_init,
 	.exit		= kai_backlight_exit,
@@ -596,7 +596,7 @@ static struct tegra_dc_out kai_disp1_out = {
 	.parent_clk_backup = "pll_d2_out0",
 
 	.type		= TEGRA_DC_OUT_RGB,
-	.depth		= 24/*18*/, /*CL2N*/
+	.depth		= 18,
 	.dither		= TEGRA_DC_ORDERED_DITHER,
 
 	.modes		= kai_panel_modes,
@@ -732,7 +732,6 @@ int __init kai_panel_init(void)
 	kai_carveouts[1].base = tegra_carveout_start;
 	kai_carveouts[1].size = tegra_carveout_size;
 #endif
-
 	gpio_request(kai_lvds_avdd_en, "lvds_avdd_en");
 	gpio_direction_output(kai_lvds_avdd_en, 1);
 
@@ -747,23 +746,16 @@ int __init kai_panel_init(void)
 	gpio_request(kai_lvds_rst, "lvds_rst");
 	gpio_direction_output(kai_lvds_rst, 1);
 
-	gpio_request(kai_lvds_rs, "lvds_rs");
-	gpio_direction_output(kai_lvds_rs, 1);
+	if (board_info.fab == BOARD_FAB_A00) {
+		gpio_request(kai_lvds_rs_a00, "lvds_rs");
+		gpio_direction_output(kai_lvds_rs_a00, 0);
+	} else {
+		gpio_request(kai_lvds_rs, "lvds_rs");
+		gpio_direction_output(kai_lvds_rs, 0);
+	}
 
 	gpio_request(kai_lvds_lr, "lvds_lr");
 	gpio_direction_output(kai_lvds_lr, 1);
-
-	gpio_request(kai_lvds_ud, "lvds_ud");
-	gpio_direction_output(kai_lvds_ud, 0);
-
-	gpio_request(kai_lvds_bpp, "lvds_bpp");
-	gpio_direction_output(kai_lvds_bpp, 0); /* 24BPP */
-
-	/* CABC Off */
-	gpio_request(kai_lvds_mode0, "lvds_mode0");
-	gpio_direction_output(kai_lvds_mode0, 0);
-	gpio_request(kai_lvds_mode1, "lvds_mode1");
-	gpio_direction_output(kai_lvds_mode1, 0);
 
 	gpio_request(kai_lvds_shutdown, "lvds_shutdown");
 	gpio_direction_output(kai_lvds_shutdown, 1);
