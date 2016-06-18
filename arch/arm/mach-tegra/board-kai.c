@@ -273,12 +273,6 @@ static struct smb349_charger_platform_data smb349_charger_pdata = {
 	.num_consumer_supplies = ARRAY_SIZE(smb349_vbus_supply),
 	.otg_consumer_supplies = smb349_otg_vbus_supply,
 	.num_otg_consumer_supplies = ARRAY_SIZE(smb349_otg_vbus_supply),
-        .stat_gpio = MAX77663_GPIO_BASE + MAX77663_GPIO1,
-        .irq_gpio = MAX77663_IRQ_BASE + MAX77663_IRQ_GPIO1,
-        .configuration_data = {0x6A/*0x00*//*input current*/, 0x40/*taper current*/, 0xFF, 0xFF, 0x38/*recharge current=100mA*/, 0x06 /*500mA for other charger*/, 0xFF, 0x40/*min system voltage and termal enable*/, 
-                                                  0xFF, 0xFF/*OTG active low: 0x20*/, 0xFF, 0x4E,//0x8E/*temperature monitor:0~50*/ 
-                                                  0x80, 0x98, /*<-- interrupt mask*/
-                                                  0xFF, 0xFF, 0x0F/*low battery threshold:3.58*/},
 };
 
 static struct i2c_board_info kai_i2c4_smb349_board_info[] = {

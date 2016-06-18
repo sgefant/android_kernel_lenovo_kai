@@ -531,25 +531,25 @@ static void bq27541_charger_status(enum charging_states status, enum charger_typ
 	struct bq27541_device_info *di = (struct bq27541_device_info *)data;
 
 	mutex_lock(&battery_mutex);
-	di->ac_online = 0;
-	di->usb_online = 0;
-	di->battery_online = 0;
-	if (chrg_type == SMB349_AC)
-		di->ac_online = 1;
-	else if (chrg_type == SMB349_USB)
+	di->ac_online = 0;	
+	di->usb_online = 0;	
+	di->battery_online = 0;	
+	if (chrg_type == AC)	
+		di->ac_online = 1;	
+	else if (chrg_type == USB)	
 		di->usb_online = 1;
 	else
 		di->battery_online = 1;
-
-	if (status == smb349_progress)
-		di->status = POWER_SUPPLY_STATUS_CHARGING;
-	else if (status == smb349_completed)
-		di->status = POWER_SUPPLY_STATUS_FULL;
-	else if (status >= smb349_temp_hot_fault)
-		di->status = POWER_SUPPLY_STATUS_NOT_CHARGING;
+	
+	if (status == progress)	
+		di->status = POWER_SUPPLY_STATUS_CHARGING;	
+	else if (status == completed)	
+		di->status = POWER_SUPPLY_STATUS_FULL;	
+	else if (status >= stopped)	
+		di->status = POWER_SUPPLY_STATUS_NOT_CHARGING;	
 	else
 	{
-		if((chrg_type >= SMB349_AC) && (di->lifesoc >= 100))
+		if((chrg_type >= AC) && (di->lifesoc >= 100))
 			di->status = POWER_SUPPLY_STATUS_FULL;
 		else
 			di->status = POWER_SUPPLY_STATUS_DISCHARGING;

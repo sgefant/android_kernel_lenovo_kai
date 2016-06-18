@@ -43,11 +43,6 @@
 #define  USB_INT_EN		(USB_VBUS_INT_EN | USB_ID_INT_EN | \
 						USB_VBUS_WAKEUP_EN | USB_ID_PIN_WAKEUP_EN)
 
-#if 1 //CL2N+
-typedef void (*callback_t)(enum usb_otg_state to,
-				enum usb_otg_state from, void *args);
-#endif //CL2N-
-
 #ifdef DEBUG
 #define DBG(stuff...)	pr_info("tegra-otg: " stuff)
 #else
@@ -66,16 +61,9 @@ struct tegra_otg_data {
 	struct work_struct work;
 	unsigned int intr_reg_data;
 	bool clk_enabled;
-	#if 1 //CL2N+
-	callback_t	charger_cb;
-	void	*charger_cb_data;
-	#endif //CL2N-
 	bool interrupt_mode;
 	bool builtin_host;
 	bool suspended;
-	//&*&*&*AL1_20120625 - This might be unneccessary
-	bool enter_suspend;
-	//&*&*&*AL1_20120625
 };
 
 static struct tegra_otg_data *tegra_clone;
@@ -199,38 +187,6 @@ static void tegra_otg_notify_event(struct otg_transceiver *otg,
 	atomic_notifier_call_chain(&otg->notifier, event, NULL);
 }
 
-// CL2N+
-int tegra_get_host(int suspend)
-{
-	int val;
-	if(!tegra_clone)
-		return 0;
-	/* Clear pending interrupts */
-	clk_enable(tegra_clone->clk);
-	val = readl(tegra_clone->regs + USB_PHY_WAKEUP);
-	writel(val, tegra_clone->regs + USB_PHY_WAKEUP);
-	clk_disable(tegra_clone->clk);
-
-	/* Handle if host cable is replaced with device during suspend state */
-	tegra_clone->enter_suspend = suspend;
-	if(!(val & USB_ID_STATUS))
-		return 1;
-	else
-		return 0;
-}
-EXPORT_SYMBOL_GPL(tegra_get_host);
-
-int register_otg_callback(callback_t cb, void *args)
-{
-       if (!tegra_clone)
-               return -ENODEV;
-       tegra_clone->charger_cb = cb;
-       tegra_clone->charger_cb_data = args;
-       return 0;
-}
-EXPORT_SYMBOL_GPL(register_otg_callback);
-// CL2N-
-
 static void tegra_change_otg_state(struct tegra_otg_data *tegra,
 				enum usb_otg_state to)
 {
@@ -249,9 +205,6 @@ static void tegra_change_otg_state(struct tegra_otg_data *tegra,
 		otg->state = to;
 		dev_info(tegra->otg.dev, "%s --> %s\n", tegra_state_name(from),
 					      tegra_state_name(to));
-
-		if (tegra->charger_cb)
-			tegra->charger_cb(to, from, tegra->charger_cb_data);
 
 		if (from == OTG_STATE_A_SUSPEND) {
 			if (to == OTG_STATE_B_PERIPHERAL && otg->gadget) {
