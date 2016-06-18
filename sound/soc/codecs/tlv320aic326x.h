@@ -34,7 +34,7 @@
 #define  INT_FLAG2_BUTTN_PRESSBIT 0x20
 
 /* Enable register caching on write */
- #define EN_REG_CACHE 1
+#define EN_REG_CACHE 1
 
 //#define MULTIBYTE_CONFIG_SUPPORT
 
@@ -53,8 +53,6 @@ extern struct mutex codec_io_mutex;
 /* Enable the AIC3262_TiLoad macro first before enabling these macros */
 //#define CONFIG_MINI_DSP
 /*#undef CONFIG_MINI_DSP*/
-//#define AIC3262_SYNC_MODE
-#undef AIC3262_SYNC_MODE
 
 /* Enable or disable controls to have Input routing*/
 /*#define FULL_IN_CNTL */
@@ -69,8 +67,6 @@ extern struct mutex codec_io_mutex;
 #define AIC3262_FREQ_12000000 12000000
 #define AIC3262_FREQ_12288000 12288000
 #define AIC3262_FREQ_24000000 24000000
-
-#define AIC3262_FREQ_11289600 11289600
 
 /* Macro for enabling the Multi_I2S Support in Driver */
 #define AIC3262_MULTI_I2S	1
@@ -269,10 +265,8 @@ extern struct mutex codec_io_mutex;
 
 #define HPL_VOL			(PAGE_1 + 31)
 #define HPR_VOL			(PAGE_1 + 32)
-#define PUMP_CNTL_R1	(PAGE_1 + 33)
-#define PUMP_CNTL_R2	(PAGE_1 + 34)
-//#define INT1_SEL_L		(PAGE_1 + 34)
 #define PUMP_CNTL_R3	(PAGE_1 + 35)
+#define INT1_SEL_L		(PAGE_1 + 34)
 #define RAMP_CNTL_R1		(PAGE_1 + 36)
 #define RAMP_CNTL_R2		(PAGE_1 + 37)
 //#define INT1_SEL_RM		(PAGE_1 + 39)
@@ -341,7 +335,6 @@ extern struct mutex codec_io_mutex;
 #define ASI3_WCLK_N             (PAGE_4 + 45)
 #define ASI3_BWCLK_OUT_CNTL	(PAGE_4 + 46)
 #define ASI3_DATA_OUT		(PAGE_4 + 47)
-#define ASI3_ADC_CTRL_REG		(PAGE_4 + 48)
 #define WCLK1_PIN_CNTL_REG	(PAGE_4 + 65)
 #define DOUT1_PIN_CNTL_REG	(PAGE_4 + 67)
 #define DIN1_PIN_CNTL_REG	(PAGE_4 + 68)
@@ -361,7 +354,6 @@ extern struct mutex codec_io_mutex;
 #define DMIC_DAT_PIN_CTL	(PAGE_4 + 101)
 #define GPO1_PIN_CNTL		(PAGE_4 + 96)
 #define MINIDSP_PORT_CNTL_REG	(PAGE_4 + 118)
-#define MINIDSP_REG			(PAGE_4 + 119)
 
 /****************************************************************************
 * Mixer control  related #defines
@@ -675,7 +667,6 @@ int aic326x_headset_type(struct snd_soc_codec *codec, int jack_insert);
  *      enable the headset detection
  *
  */
-
 extern int aic326x_headset_detect(struct snd_soc_codec *codec,
 	struct snd_soc_jack *jack, int jack_type);
 extern int aic326x_headset_button_init(struct snd_soc_codec *codec,
@@ -685,7 +676,8 @@ extern unsigned int aic3262_read(struct snd_soc_codec *codec, unsigned int reg);
 extern u16 aic3262_read_2byte(struct snd_soc_codec *codec, u16 reg);
 extern int aic3262_reset_cache(struct snd_soc_codec *codec);
 extern int aic3262_change_page(struct snd_soc_codec *codec, u8 new_page);
-extern int aic3262_write(struct snd_soc_codec *codec, unsigned int reg, unsigned int value);
+extern int aic3262_write(struct snd_soc_codec *codec, unsigned int reg,
+							unsigned int value);
 extern void aic3262_write_reg_cache(struct snd_soc_codec *codec,
 				    u16 reg, u8 value);
 extern int aic3262_change_book(struct snd_soc_codec *codec, u8 new_book);
@@ -695,9 +687,8 @@ extern int poll_dac(struct snd_soc_codec *codec, int left_right, int on_off);
 extern int poll_adc(struct snd_soc_codec *codec, int left_right, int on_off);
 
 #ifdef CONFIG_MINI_DSP
-/* extern int aic3262_minidsp_program(struct snd_soc_codec *codec); */
+extern int aic3262_minidsp_program(struct snd_soc_codec *codec);
 extern int aic3262_add_minidsp_controls(struct snd_soc_codec *codec);
-extern void aic3262_dump_page_reg(struct  snd_soc_codec *codec, u8 page);
 #endif
 extern void spi_cs_en(unsigned int cs, unsigned int cspin);
 
