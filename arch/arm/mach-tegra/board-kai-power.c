@@ -203,9 +203,8 @@ MAX77663_PDATA_INIT(ldo2, 800000, 3950000, NULL, 1, 0, 0,
 MAX77663_PDATA_INIT(ldo3, 800000, 3950000, NULL, 1, 0, 0,
 		    1, 1, -1, FPS_SRC_1, -1, -1, 0);
 
-//NV patch:0001-arm-tegra-kai-tune-power-rail-sequence-during-power.patch
 MAX77663_PDATA_INIT(ldo4, 800000, 1587500, NULL, 0, 0, 0,
-		    1, 0, 1200000, FPS_SRC_0, -1, -1, LDO4_EN_TRACKING | LDO4_ADE_DISABLE);
+		    1, 0, 1000000, FPS_SRC_0, -1, -1, LDO4_EN_TRACKING);
 
 MAX77663_PDATA_INIT(ldo5, 800000, 2800000, NULL, 0, 0, 0,
 		    1, 1, -1, FPS_SRC_NONE, -1, -1, 0);
