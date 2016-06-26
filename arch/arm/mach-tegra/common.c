@@ -1714,11 +1714,6 @@ void __init tegra_ram_console_debug_init(void)
 }
 #endif
 
-int __init tegra_register_fuse(void)
-{
-	return platform_device_register(&tegra_fuse_device);
-}
-
 void __init tegra_release_bootloader_fb(void)
 {
 	/* Since bootloader fb is reserved in common.c, it is freed here. */
