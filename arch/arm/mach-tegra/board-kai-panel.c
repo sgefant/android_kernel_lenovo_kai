@@ -411,10 +411,21 @@ static struct resource kai_disp2_resources[] = {
 };
 #endif
 
+/*
+ * how to determine pclk
+ * h_total =
+ * Horiz_BackPorch + Horiz_SyncWidth + Horiz_DispActive + Horiz_FrontPorch;
+ *
+ * v_total =
+ * Vert_BackPorch + Vert_SyncWidth + Vert_DispActive + Vert_FrontPorch;
+ * panel_freq = ( h_total * v_total * refresh_freq );
+ */
+
 static struct tegra_dc_mode kai_panel_modes[] = {
 	{
 		/* 1280x800@60Hz */
-		.pclk = 66600000,
+		//.pclk = 66600000,
+		.pclk = 72500000, /* h_total = 10 + 10 + 1280 + 140 = 1440; v_total = 15 + 8 + 800 + 15 = 838 ; 1440 * 838 * 60 =  72403200*/
 		.h_ref_to_sync = 11,
 		.v_ref_to_sync = 1,
 		.h_sync_width = 10,
