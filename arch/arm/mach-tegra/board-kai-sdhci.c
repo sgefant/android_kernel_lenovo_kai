@@ -17,12 +17,12 @@
 
 #include <linux/resource.h>
 #include <linux/platform_device.h>
+#include <linux/wlan_plat.h>
 #include <linux/delay.h>
 #include <linux/gpio.h>
 #include <linux/clk.h>
 #include <linux/err.h>
 #include <linux/mmc/host.h>
-#include <linux/wl12xx.h>
 
 #include <asm/mach-types.h>
 #include <mach/irqs.h>
@@ -36,31 +36,38 @@
 #include "board-kai.h"
 
 #define KAI_SD_CD	TEGRA_GPIO_PI5
-#define KAI_WLAN_EN	TEGRA_GPIO_PD3
-#define KAI_WLAN_IRQ	TEGRA_GPIO_PV1
+#define KAI_WLAN_PWR	TEGRA_GPIO_PD4
+#define KAI_WLAN_WOW	TEGRA_GPIO_PW3
 
 static void (*wifi_status_cb)(int card_present, void *dev_id);
 static void *wifi_status_cb_devid;
+static int kai_wifi_status_register(void (*callback)(int , void *), void *);
+
+static int kai_wifi_reset(int on);
 static int kai_wifi_power(int power_on);
 static int kai_wifi_set_carddetect(int val);
 
-static int kai_wifi_status_register(
-		void (*callback)(int card_present, void *dev_id),
-		void *dev_id)
-{
-	if (wifi_status_cb)
-		return -EAGAIN;
-	wifi_status_cb = callback;
-	wifi_status_cb_devid = dev_id;
-	return 0;
-}
+static struct wifi_platform_data kai_wifi_control = {
+	.set_power	= kai_wifi_power,
+	.set_reset	= kai_wifi_reset,
+	.set_carddetect	= kai_wifi_set_carddetect,
+};
 
+static struct resource wifi_resource[] = {
+	[0] = {
+		.name	= "bcmdhd_wlan_irq",
+		.flags	= IORESOURCE_IRQ | IORESOURCE_IRQ_HIGHLEVEL | IORESOURCE_IRQ_SHAREABLE,
+	},
+};
 
-static struct wl12xx_platform_data kai_wlan_data __initdata = {
-	.board_ref_clock = WL12XX_REFCLOCK_26,
-	.board_tcxo_clock = 1,
-	.set_power = kai_wifi_power,
-	.set_carddetect = kai_wifi_set_carddetect,
+static struct platform_device kai_wifi_device = {
+	.name		= "bcmdhd_wlan",
+	.id		= 1,
+	.num_resources	= 1,
+	.resource	= wifi_resource,
+	.dev		= {
+		.platform_data = &kai_wifi_control,
+	},
 };
 
 static struct resource sdhci_resource0[] = {
@@ -192,49 +199,66 @@ static struct platform_device tegra_sdhci_device3 = {
 	},
 };
 
+static int kai_wifi_status_register(
+		void (*callback)(int card_present, void *dev_id),
+		void *dev_id)
+{
+	if (wifi_status_cb)
+		return -EAGAIN;
+	wifi_status_cb = callback;
+	wifi_status_cb_devid = dev_id;
+	return 0;
+}
+
 static int kai_wifi_set_carddetect(int val)
 {
 	pr_debug("%s: %d\n", __func__, val);
 	if (wifi_status_cb)
 		wifi_status_cb(val, wifi_status_cb_devid);
 	else
-	pr_warning("%s: Nobody to notify\n", __func__);
+		pr_warning("%s: Nobody to notify\n", __func__);
 	return 0;
 }
 
 static int kai_wifi_power(int power_on)
 {
-	struct tegra_io_dpd *sd_dpd;
-	pr_err("Powering %s wifi\n", (power_on ? "on" : "off"));
+        pr_err("Powering %s wifi\n", (power_on ? "on" : "off"));
+	gpio_set_value(KAI_WLAN_PWR, power_on);
+	mdelay(100);
+	return 0;
+}
 
-	/*
-	 * FIXME : we need to revisit IO DPD code
-	 * on how should multiple pins under DPD get controlled
-	 *
-	 * kai GPIO WLAN enable is part of SDMMC3 pin group
-	 */
-	sd_dpd = tegra_io_dpd_get(&tegra_sdhci_device2.dev);
-	if (sd_dpd) {
-		mutex_lock(&sd_dpd->delay_lock);
-		tegra_io_dpd_disable(sd_dpd);
-		mutex_unlock(&sd_dpd->delay_lock);
-	}
-	if (power_on) {
-		gpio_set_value(KAI_WLAN_EN, 1);
-		mdelay(15);
-		gpio_set_value(KAI_WLAN_EN, 0);
-		mdelay(1);
-		gpio_set_value(KAI_WLAN_EN, 1);
-		mdelay(70);
-	} else {
-		gpio_set_value(KAI_WLAN_EN, 0);
-	}
-	if (sd_dpd) {
-		mutex_lock(&sd_dpd->delay_lock);
-		tegra_io_dpd_enable(sd_dpd);
-		mutex_unlock(&sd_dpd->delay_lock);
-	}
+static int kai_wifi_reset(int on)
+{
+	pr_debug("%s: do nothing\n", __func__);
+	return 0;
+}
 
+static int __init kai_wifi_init(void)
+{
+	int rc;
+
+	rc = gpio_request(KAI_WLAN_PWR, "wlan_power");
+	if (rc)
+		pr_err("WLAN_PWR gpio request failed:%d\n", rc);
+
+	rc = gpio_request(KAI_WLAN_WOW, "bcmsdh_sdmmc");
+	if (rc)
+		pr_err("WLAN_WOW gpio request failed:%d\n", rc);
+
+	rc = gpio_direction_output(KAI_WLAN_PWR, 0);
+	if (rc)
+		pr_err("WLAN_PWR gpio direction configuration failed:%d\n", rc);
+
+	rc = gpio_direction_input(KAI_WLAN_WOW);
+	if (rc)
+		pr_err("WLAN_WOW gpio direction configuration failed:%d\n", rc);
+
+	wifi_resource[0].start = wifi_resource[0].end =
+		gpio_to_irq(KAI_WLAN_WOW); //TEGRA_GPIO_PW3
+
+
+	platform_device_register(&kai_wifi_device);
 	return 0;
 }
 
@@ -251,33 +275,6 @@ static int __init kai_wifi_prepower(void)
 
 subsys_initcall_sync(kai_wifi_prepower);
 #endif
-
-static int __init kai_wifi_init(void)
-{
-	int rc;
-
-	rc = gpio_request(KAI_WLAN_EN, "wl12xx");
-	if (rc)
-		pr_err("WLAN_EN gpio request failed:%d\n", rc);
-
-	rc = gpio_request(KAI_WLAN_IRQ, "wl12xx");
-	if (rc)
-		pr_err("WLAN_IRQ gpio request failed:%d\n", rc);
-
-	rc = gpio_direction_output(KAI_WLAN_EN, 0);
-	if (rc)
-		pr_err("WLAN_EN gpio direction configuration failed:%d\n", rc);
-
-	rc = gpio_direction_input(KAI_WLAN_IRQ);
-	if (rc)
-		pr_err("WLAN_IRQ gpio direction configuration failed:%d\n", rc);
-
-	kai_wlan_data.irq = gpio_to_irq(KAI_WLAN_IRQ);
-	if (wl12xx_set_platform_data(&kai_wlan_data))
-		pr_err("Error setting wl12xx data\n");
-
-	return 0;
-}
 
 int __init kai_sdhci_init(void)
 {
