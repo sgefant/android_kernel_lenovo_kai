@@ -708,7 +708,7 @@ static void __init tegra_kai_init(void)
 	kai_sensors_init();
 	kai_pins_state_init();
 	kai_emc_init();
-	tegra_release_bootloader_fb();
+	//tegra_release_bootloader_fb();
 	kai_modem_init();
 #ifdef CONFIG_TEGRA_WDT_RECOVERY
 	tegra_wdt_recovery_init();
