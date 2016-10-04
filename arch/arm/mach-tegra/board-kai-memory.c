@@ -26,8 +26,12 @@
 #include "fuse.h"
 #include "devices.h"
 
+#include "cl2n_Hynix_1GB_H5TC4G63MFR-H9A_ddr3.h"
+#include "cl2n_Elpida_1GB_EDJ4216EBBG-DJ-F_ddr3.h"
+#include "cl2n_Samsung_1GB_K4B4G1646B-HYH9_ddr3.h"
 
-static const struct tegra30_emc_table kai_emc_tables_h5tc4g[] = {
+/* Elpida_1GB_EDJ4216EBBG */
+static const struct tegra30_emc_table kai_emc_tables_elpida_1gb_edj4216ebbg[] = {
 	{
 		0x32,       /* Rev 3.2 */
 		25500,      /* SDRAM frequency */
@@ -750,17 +754,50 @@ static const struct tegra30_emc_table kai_emc_tables_h5tc4g[] = {
 	},
 };
 
-static struct tegra30_emc_pdata kai_emc_chip_h5tc4g = {
-	.description = "h5tc4g",
-	.tables = (struct tegra30_emc_table *)kai_emc_tables_h5tc4g,
-	.num_tables = ARRAY_SIZE(kai_emc_tables_h5tc4g)
+
+static struct tegra30_emc_pdata cl2n_emc_chip_elpida = {
+	.description = "edj4216ebbg",
+	.tables = (struct tegra30_emc_table *)cl2n_dvt_emc_tables_Elpida_1GB_EDJ4216EBBG_DJ_F_ddr3,
+	.num_tables = ARRAY_SIZE(cl2n_dvt_emc_tables_Elpida_1GB_EDJ4216EBBG_DJ_F_ddr3)
 };
 
-int __init kai_emc_init(void)
-{
-	struct tegra30_emc_pdata *emc_platdata = &kai_emc_chip_h5tc4g;
+static struct tegra30_emc_pdata cl2n_emc_chip_hynix = {
+	.description = "h5tc4g63mf3",
+	.tables = (struct tegra30_emc_table *)cl2n_dvt_emc_tables_Hynix_1GB_H5TC4G63MFR_H9A_ddr3,
+	.num_tables = ARRAY_SIZE(cl2n_dvt_emc_tables_Hynix_1GB_H5TC4G63MFR_H9A_ddr3)
+};
 
-	tegra_emc_device.dev.platform_data = emc_platdata;
+static struct tegra30_emc_pdata cl2n_emc_chip_samsung = {
+	.description = "k4b4g1646b",
+	.tables = (struct tegra30_emc_table *)cl2n_dvt_emc_tables_Samsung_1GB_K4B4G1646B_HYH9_ddr3,
+	.num_tables = ARRAY_SIZE(cl2n_dvt_emc_tables_Samsung_1GB_K4B4G1646B_HYH9_ddr3)
+};
+
+static struct tegra30_emc_pdata kai_emc_chip_elpida = {
+	.description = "edj4216ebbg",
+	.tables = (struct tegra30_emc_table *)kai_emc_tables_elpida_1gb_edj4216ebbg,
+	.num_tables = ARRAY_SIZE(kai_emc_tables_elpida_1gb_edj4216ebbg)
+};
+
+static struct tegra30_emc_pdata *kai_get_emc_platdata(int hw_ramcode) {
+	switch (hw_ramcode) {
+	case 0: /* ELPIDA */
+		return &cl2n_emc_chip_elpida;
+	case 1: /* HYNIX */
+		return &cl2n_emc_chip_hynix;
+	case 2: /* SAMSUNG */
+		return &cl2n_emc_chip_samsung;
+	default:
+		return &kai_emc_chip_elpida;
+	}
+}
+
+int __init kai_emc_init(void) {
+	int hw_ramcode;
+	hw_ramcode = tegra_get_hw_ramcode();
+	printk("hardware ramcode is %d\n", hw_ramcode);
+
+	tegra_emc_device.dev.platform_data = kai_get_emc_platdata(hw_ramcode);
 	platform_device_register(&tegra_emc_device);
 
 	tegra30_init_emc();

@@ -42,6 +42,7 @@
 #include "board-kai.h"
 #include "pm.h"
 #include "tegra3_tsensor.h"
+#include "wakeups-t3.h"
 
 #define PMC_CTRL		0x0
 #define PMC_CTRL_INTR_LOW	(1 << 17)
@@ -57,6 +58,7 @@ static struct regulator_consumer_supply max77663_sd1_supply[] = {
 static struct regulator_consumer_supply max77663_sd2_supply[] = {
 	REGULATOR_SUPPLY("vdd_gen1v8", NULL),
 	REGULATOR_SUPPLY("avdd_hdmi_pll", NULL),
+	REGULATOR_SUPPLY("avdd_usb_pll", NULL),
 	REGULATOR_SUPPLY("avdd_usb_pll", "tegra-udc.0"),
 	REGULATOR_SUPPLY("avdd_usb_pll", "tegra-ehci.0"),
 	REGULATOR_SUPPLY("avdd_usb_pll", "tegra-ehci.1"),
@@ -101,6 +103,7 @@ static struct regulator_consumer_supply max77663_ldo2_supply[] = {
 };
 
 static struct regulator_consumer_supply max77663_ldo3_supply[] = {
+	REGULATOR_SUPPLY("vmmc", NULL),
 };
 
 static struct regulator_consumer_supply max77663_ldo4_supply[] = {
@@ -179,7 +182,7 @@ static struct max77663_regulator_fps_cfg max77663_fps_cfgs[] = {
 		.fps_pd_period = _fps_pd_period,			\
 		.fps_cfgs = max77663_fps_cfgs,				\
 		.flags = _flags,					\
-	}
+	};
 
 MAX77663_PDATA_INIT(SD0, sd0,  600000, 3387500, NULL, 1, 0, 0,
 		    FPS_SRC_NONE, -1, -1, EN2_CTRL_SD0);
@@ -202,7 +205,7 @@ MAX77663_PDATA_INIT(LDO1, ldo1, 800000, 2350000, max77663_rails(sd3), 0, 0, 0,
 MAX77663_PDATA_INIT(LDO2, ldo2, 800000, 3950000, NULL, 1, 1, 0,
 		    FPS_SRC_1, -1, -1, 0);
 
-MAX77663_PDATA_INIT(LDO3, ldo3, 800000, 3950000, NULL, 1, 1, 0,
+MAX77663_PDATA_INIT(LDO3, ldo3, 3000000, 3100000, NULL, 1, 1, 0,
 		    FPS_SRC_1, -1, -1, 0);
 
 MAX77663_PDATA_INIT(LDO4, ldo4, 1000000, 1000000, NULL, 0, 1, 0,
@@ -399,10 +402,22 @@ static struct regulator_consumer_supply fixed_reg_en_3v3_fuse_supply[] = {
 	REGULATOR_SUPPLY("vpp_fuse", NULL),
 };
 
+static struct regulator_consumer_supply fixed_reg_vdd_vbrtr_supply[] = {
+	REGULATOR_SUPPLY("vdd_vbrtr", NULL),
+};
+
+static struct regulator_consumer_supply fixed_reg_en_cam1_ldo_supply[] = {
+	REGULATOR_SUPPLY("vdd_cam1", NULL),
+};
+
+static struct regulator_consumer_supply fixed_reg_en_cam2_ldo_supply[] = {
+	REGULATOR_SUPPLY("vdd_cam2", NULL),
+};
+
 /* Macro for defining fixed regulator sub device data */
 #define FIXED_SUPPLY(_name) "fixed_reg_"#_name
 #define FIXED_REG(_id, _var, _name, _in_supply, _always_on, _boot_on,	\
-	_gpio_nr, _active_high, _boot_state, _millivolts)	\
+	_gpio_nr, _active_high, _boot_state, _millivolts)		\
 	static struct regulator_init_data ri_data_##_var =		\
 	{								\
 		.supply_regulator = _in_supply,				\
@@ -434,7 +449,7 @@ static struct regulator_consumer_supply fixed_reg_en_3v3_fuse_supply[] = {
 		.dev = {						\
 			.platform_data = &fixed_reg_##_var##_pdata,	\
 		},							\
-	}
+	};
 
 
 /* A00 specific */
@@ -472,14 +487,19 @@ FIXED_REG(5, en_3v3_modem_a01,	en_3v3_modem,		NULL,
 	0,	1,	TEGRA_GPIO_PP0,				true,	0,	3300);
 FIXED_REG(6, en_vdd_pnl_a01,	en_vdd_pnl,		FIXED_SUPPLY(en_3v3_sys_a01),
 	0,	1,	TEGRA_GPIO_PW1,				true,	0,	3300);
-FIXED_REG(7, en_cam3_ldo_a01,	en_cam3_ldo,		FIXED_SUPPLY(en_3v3_sys_a01),
-	0,	0,	TEGRA_GPIO_PR7,				true,	0,	3300);
+FIXED_REG(7, en_cam2_ldo_a01,	en_cam2_ldo,		NULL,
+	0,	0,	TEGRA_GPIO_PR7,				true,	0,	2800);
 FIXED_REG(8, en_vdd_com_a01,	en_vdd_com,		FIXED_SUPPLY(en_3v3_sys_a01),
 	1,	0,	TEGRA_GPIO_PD0,				true,	0,	3300);
 FIXED_REG(9,  en_vdd_sdmmc1_a01, en_vdd_sdmmc1,		FIXED_SUPPLY(en_3v3_sys_a01),
 	0,	0,	TEGRA_GPIO_PC6,				true,	0,	3300);
 FIXED_REG(10, en_3v3_fuse_a01,	en_3v3_fuse,		FIXED_SUPPLY(en_3v3_sys_a01),
 	0,	0,	TEGRA_GPIO_PC1,				true,	0,	3300);
+FIXED_REG(12, vdd_vbrtr,	vdd_vbrtr,		NULL,
+	0,	0,	MAX77663_GPIO_BASE + MAX77663_GPIO0,	true,	0,	3300);
+FIXED_REG(13, en_cam1_ldo_a01, en_cam1_ldo,            NULL,
+	0,	0,	TEGRA_GPIO_PR6,				true,	0,	2800);
+
 
 /*
  * Creating the fixed regulator device tables
@@ -508,10 +528,12 @@ FIXED_REG(10, en_3v3_fuse_a01,	en_3v3_fuse,		FIXED_SUPPLY(en_3v3_sys_a01),
 	ADD_FIXED_REG(en_vddio_vid_a01),	\
 	ADD_FIXED_REG(en_3v3_modem_a01),	\
 	ADD_FIXED_REG(en_vdd_pnl_a01),		\
-	ADD_FIXED_REG(en_cam3_ldo_a01),		\
+	ADD_FIXED_REG(en_cam2_ldo_a01),		\
 	ADD_FIXED_REG(en_vdd_com_a01),		\
 	ADD_FIXED_REG(en_vdd_sdmmc1_a01),	\
 	ADD_FIXED_REG(en_3v3_fuse_a01),		\
+	ADD_FIXED_REG(vdd_vbrtr),		\
+	ADD_FIXED_REG(en_cam1_ldo_a01),		\
 
 /* Gpio switch regulator platform data for Kai A00 */
 static struct platform_device *fixed_reg_devs_a00[] = {
@@ -615,14 +637,14 @@ int __init kai_suspend_init(void)
 }
 
 static struct tegra_tsensor_pmu_data  tpdata = {
-	.poweroff_reg_addr = 0x3F,
-	.poweroff_reg_data = 0x80,
+	.poweroff_reg_addr = 0x41,
+	.poweroff_reg_data = 0xE0,
 	.reset_tegra = 1,
 	.controller_type = 0,
 	.i2c_controller_id = 4,
 	.pinmux = 0,
 	.pmu_16bit_ops = 0,
-	.pmu_i2c_addr = 0x2D,
+	.pmu_i2c_addr = 0x3C,
 };
 
 void __init kai_tsensor_init(void)

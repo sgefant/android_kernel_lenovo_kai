@@ -24,6 +24,7 @@
 #include "board-kai.h"
 #include "devices.h"
 #include "gpio-names.h"
+#include <linux/delay.h>  //CL2N+
 
 #define DEFAULT_DRIVE(_name)					\
 	{							\
@@ -267,11 +268,23 @@ static __initdata struct tegra_pingroup_config kai_pinmux_common[] = {
 	DEFAULT_PINMUX(DAP4_DOUT,       I2S3,            NORMAL,    NORMAL,     INPUT),
 	DEFAULT_PINMUX(DAP4_SCLK,       I2S3,            NORMAL,    NORMAL,     INPUT),
 
-	/* SPI1 : touch */
+	/* I2S4 : for CODEC */
+	DEFAULT_PINMUX(GPIO_PBB0,       I2S4,            NORMAL,    NORMAL,     INPUT),
+	DEFAULT_PINMUX(GPIO_PBB7,       I2S4,            NORMAL,    NORMAL,     INPUT),
+	DEFAULT_PINMUX(GPIO_PCC1,       I2S4,            NORMAL,    NORMAL,     INPUT),
+	DEFAULT_PINMUX(GPIO_PCC2,       I2S4,            NORMAL,    NORMAL,     INPUT),
+
+	/* SPI1 : AIC3262 audio Codec */
 	DEFAULT_PINMUX(SPI1_MOSI,       SPI1,            NORMAL,    NORMAL,     INPUT),
 	DEFAULT_PINMUX(SPI1_SCK,        SPI1,            NORMAL,    NORMAL,     INPUT),
 	DEFAULT_PINMUX(SPI1_CS0_N,      SPI1,            NORMAL,    NORMAL,     INPUT),
 	DEFAULT_PINMUX(SPI1_MISO,       SPI1,            NORMAL,    NORMAL,     INPUT),
+
+	/* SPI2 : Touch */
+	DEFAULT_PINMUX(ULPI_DATA4,      SPI2,            NORMAL,    NORMAL,     INPUT),
+	DEFAULT_PINMUX(ULPI_DATA5,      SPI2,            NORMAL,    NORMAL,     INPUT),
+	DEFAULT_PINMUX(ULPI_DATA6,      SPI2,            NORMAL,    NORMAL,     INPUT),
+	DEFAULT_PINMUX(ULPI_DATA7,      SPI2,            NORMAL,    NORMAL,     INPUT),
 
 	/* SPIDIF */
 	DEFAULT_PINMUX(SPDIF_IN,        SPDIF,           NORMAL,    NORMAL,     INPUT),
@@ -370,8 +383,8 @@ static __initdata struct tegra_pingroup_config kai_pinmux_common[] = {
 	DEFAULT_PINMUX(LCD_CS1_N,       DISPLAYA,        NORMAL,    NORMAL,     INPUT),
 	DEFAULT_PINMUX(LCD_SCK,         DISPLAYA,        NORMAL,    NORMAL,     INPUT),
 	DEFAULT_PINMUX(LCD_SDIN,        DISPLAYA,        NORMAL,    NORMAL,     INPUT),
-	DEFAULT_PINMUX(CRT_HSYNC,       CRT,             NORMAL,    NORMAL,     OUTPUT),
-	DEFAULT_PINMUX(CRT_VSYNC,       CRT,             NORMAL,    NORMAL,     OUTPUT),
+	DEFAULT_PINMUX(CRT_HSYNC,       RSVD1,           NORMAL,    NORMAL,     OUTPUT),
+	DEFAULT_PINMUX(CRT_VSYNC,       RSVD1,           NORMAL,    NORMAL,     INPUT),
 	DEFAULT_PINMUX(PEX_WAKE_N,      PCIE,            NORMAL,    NORMAL,     INPUT),
 	DEFAULT_PINMUX(PEX_L2_PRSNT_N,  PCIE,            NORMAL,    NORMAL,     INPUT),
 	DEFAULT_PINMUX(PEX_L2_RST_N,    PCIE,            NORMAL,    NORMAL,     OUTPUT),
@@ -382,10 +395,25 @@ static __initdata struct tegra_pingroup_config kai_pinmux_common[] = {
 	DEFAULT_PINMUX(SPI2_CS2_N,      SPI2,            NORMAL,    NORMAL,     INPUT),
 	DEFAULT_PINMUX(SPI2_MISO,       SPI2,            NORMAL,    NORMAL,     INPUT),
 	DEFAULT_PINMUX(SPI2_MOSI,       SPI2,            NORMAL,    NORMAL,     INPUT),
-
-	DEFAULT_PINMUX(KB_ROW11,        KBC,             PULL_UP,   TRISTATE,   INPUT),
+	DEFAULT_PINMUX(KB_ROW11,        KBC,             NORMAL,    NORMAL,     OUTPUT),
 	DEFAULT_PINMUX(KB_ROW12,        KBC,             NORMAL,    TRISTATE,   OUTPUT),
 	DEFAULT_PINMUX(KB_ROW13,        KBC,             NORMAL,    TRISTATE,   OUTPUT),
+
+	/* GPIO_PP1 AP_READY */
+	DEFAULT_PINMUX(DAP3_DIN,        RSVD1,           NORMAL,    NORMAL,     OUTPUT),
+	/* GPIO_PP2 MODEM_READY */
+	DEFAULT_PINMUX(DAP3_DOUT,       RSVD1,           NORMAL,    NORMAL,     INPUT),
+	/* GPIO_PP3 AP_WAKE_MODEM */
+	DEFAULT_PINMUX(DAP3_SCLK,       RSVD1,           NORMAL,    NORMAL,     OUTPUT),
+
+	/* GPIO_PH4 TS_IRQ */
+	DEFAULT_PINMUX(GMI_AD12,        NAND,            NORMAL,    NORMAL,     INPUT),
+	/* GPIO_PH5 TS_RESET */
+	DEFAULT_PINMUX(GMI_AD13,        NAND,            NORMAL,    NORMAL,     INPUT),
+	/* GPIO_PJ0 PROX_SENSE_DET_3V3 */
+	DEFAULT_PINMUX(GMI_CS0_N,       RSVD1,           NORMAL,    NORMAL,     INPUT),
+	/* WIFI BCM4330 OOB */
+	DEFAULT_PINMUX(SPI2_CS2_N,      SPI2,            PULL_UP,   NORMAL,     INPUT),
 };
 
 /*Do not use for now*/
@@ -410,6 +438,7 @@ static __initdata struct tegra_pingroup_config unused_pins_lowpower[] = {
 	DEFAULT_PINMUX(GMI_ADV_N,       RSVD1,         NORMAL,    TRISTATE,   OUTPUT),
 	DEFAULT_PINMUX(GMI_CS0_N,       RSVD1,         NORMAL,    TRISTATE,   OUTPUT),
 	DEFAULT_PINMUX(GMI_CS1_N,       RSVD1,         NORMAL,    TRISTATE,   OUTPUT),
+	DEFAULT_PINMUX(GMI_CS2_N,       RSVD1,         NORMAL,    TRISTATE,   OUTPUT),
 	DEFAULT_PINMUX(GMI_CS4_N,       RSVD1,         NORMAL,    TRISTATE,   OUTPUT),
 	DEFAULT_PINMUX(GMI_CS6_N,       NAND,          NORMAL,    TRISTATE,   OUTPUT),
 	DEFAULT_PINMUX(GMI_CS7_N,       NAND,          NORMAL,    TRISTATE,   OUTPUT),
@@ -421,6 +450,7 @@ static __initdata struct tegra_pingroup_config unused_pins_lowpower[] = {
 	DEFAULT_PINMUX(PEX_L1_CLKREQ_N, PCIE,          NORMAL,    TRISTATE,   OUTPUT),
 	DEFAULT_PINMUX(PEX_L1_PRSNT_N,  PCIE,          NORMAL,    TRISTATE,   OUTPUT),
 	DEFAULT_PINMUX(PEX_L1_RST_N,    PCIE,          NORMAL,    TRISTATE,   OUTPUT),
+	DEFAULT_PINMUX(GPIO_PV1,        RSVD,          NORMAL,    TRISTATE,   OUTPUT),
 	DEFAULT_PINMUX(GPIO_PV2,        OWR,           NORMAL,    TRISTATE,   OUTPUT),
 	DEFAULT_PINMUX(GPIO_PV3,        RSVD1,         NORMAL,    TRISTATE,   OUTPUT),
 	DEFAULT_PINMUX(HDMI_CEC,        CEC,           NORMAL,    TRISTATE,   OUTPUT),
@@ -445,6 +475,8 @@ static __initdata struct tegra_pingroup_config unused_pins_lowpower[] = {
 	DEFAULT_PINMUX(VI_MCLK,         VI,            NORMAL,    TRISTATE,   OUTPUT),
 	DEFAULT_PINMUX(VI_PCLK,         VI,            NORMAL,    TRISTATE,   OUTPUT),
 	DEFAULT_PINMUX(VI_VSYNC,        VI,            NORMAL,    TRISTATE,   OUTPUT),
+	DEFAULT_PINMUX(GMI_DQS,         RSVD1,	       NORMAL,    TRISTATE,   OUTPUT),
+	DEFAULT_PINMUX(GMI_WAIT,        RSVD1,	       NORMAL,    TRISTATE,   OUTPUT),
 	DEFAULT_PINMUX(DAP3_DIN,        I2S2,          NORMAL,    TRISTATE,   OUTPUT),
 	DEFAULT_PINMUX(DAP3_DOUT,       I2S2,          NORMAL,    TRISTATE,   OUTPUT),
 	DEFAULT_PINMUX(DAP3_SCLK,       I2S2,          NORMAL,    TRISTATE,   OUTPUT),
@@ -453,7 +485,7 @@ static __initdata struct tegra_pingroup_config unused_pins_lowpower[] = {
 
 static void __init kai_pinmux_audio_init(void)
 {
-	int err = gpio_request(TEGRA_GPIO_CDC_IRQ, "rt5640");
+	int err = gpio_request(TEGRA_GPIO_CDC_IRQ, "aic326x");
 	if (err < 0) {
 		pr_err("%s: gpio_request failed %d\n",
 			__func__, err);
@@ -465,6 +497,21 @@ static void __init kai_pinmux_audio_init(void)
 			__func__, err);
 			gpio_free(TEGRA_GPIO_CDC_IRQ);
 	}
+	err = gpio_request(TEGRA_GPIO_PX2, "TEGRA_GPIO_PX2");
+	if (err < 0) {
+		pr_err("%s: gpio_request failed %d\n",
+			__func__, err);
+		return;
+	}
+	err = gpio_direction_output(TEGRA_GPIO_PX2, 1);
+	if (err < 0) {
+		pr_err("%s: gpio_direction_output failed %d\n",
+			__func__, err);
+			gpio_free(TEGRA_GPIO_PX2);
+	}
+	gpio_set_value(TEGRA_GPIO_PX2, 0);
+	mdelay(50);
+	gpio_set_value(TEGRA_GPIO_PX2, 1);
 
 }
 
@@ -479,7 +526,6 @@ static void __init kai_pinmux_audio_init(void)
 static struct gpio_init_pin_info init_gpio_mode_kai_common[] = {
 	GPIO_INIT_PIN_MODE(TEGRA_GPIO_PDD7, false, 0),
 	GPIO_INIT_PIN_MODE(TEGRA_GPIO_PCC6, false, 0),
-	GPIO_INIT_PIN_MODE(TEGRA_GPIO_PCC7, false, 1),
 };
 
 static void __init kai_gpio_init_configure(void)

@@ -1,978 +1,917 @@
 /*
- * drivers/power/bq27541_battery.c
+ * BQ27541 battery driver
  *
- * Gas Gauge driver for TI's BQ27541
+ * Modified by Johnny Qiu <joqiu@nvidia.com>, Chandler Zhang <chazhang@nvidia.com>
+ * Copyright (C) 2011-2012 NVIDIA Corporation.
  *
- * Copyright (c) 2010, NVIDIA Corporation.
+ * Copyright (C) 2008 Rodolfo Giometti <giometti@linux.it>
+ * Copyright (C) 2008 Eurotech S.p.A. <info@eurotech.it>
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * Based on a previous work by Copyright (C) 2008 Texas Instruments, Inc.
  *
- * This program is distributed in the hope that it will be useful, but WITHOUT
- * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
- * more details.
+ * This package is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
  *
- * You should have received a copy of the GNU General Public License along
- * with this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+ * THIS PACKAGE IS PROVIDED ``AS IS'' AND WITHOUT ANY EXPRESS OR
+ * IMPLIED WARRANTIES, INCLUDING, WITHOUT LIMITATION, THE IMPLIED
+ * WARRANTIES OF MERCHANTIBILITY AND FITNESS FOR A PARTICULAR PURPOSE.
+ *
  */
-
-#include <linux/init.h>
 #include <linux/module.h>
-#include <linux/kernel.h>
-#include <linux/err.h>
-#include <linux/debugfs.h>
+#include <linux/param.h>
+#include <linux/jiffies.h>
+#include <linux/workqueue.h>
+#include <linux/delay.h>
+#include <linux/platform_device.h>
 #include <linux/power_supply.h>
+#include <linux/idr.h>
 #include <linux/i2c.h>
 #include <linux/slab.h>
-#include <linux/gpio.h>
-#include <linux/delay.h>
-#include <linux/timer.h>
-#include <linux/interrupt.h>
 #include <asm/unaligned.h>
+#include <linux/interrupt.h>
+#include <linux/smb349-charger.h>
+
 #include <mach/gpio.h>
-#include <linux/wakelock.h>
-#include "../../arch/arm/mach-tegra/gpio-names.h"
-#include "../../arch/arm/mach-tegra/wakeups-t3.h"
+//&*&*&*HC1_20120525
+#ifdef CONFIG_CL2N_FAKE_BATTERY
+#include <linux/io.h>
+#include <mach/iomap.h>
+#endif
+//&*&*&*HC2_20120525
 
-#define SMBUS_RETRY                                     (0)
-#define BAT_IN_DET                                        TEGRA_GPIO_PN4
-#define GPIOPIN_BATTERY_DETECT	         BAT_IN_DET
-#define GPIOPIN_LOW_BATTERY_DETECT	  TEGRA_GPIO_PS4
-#define BATTERY_POLLING_RATE	(60)
-#define DELAY_FOR_CORRECT_CHARGER_STATUS	(5)
-#define TEMP_KELVIN_TO_CELCIUS		(2731)
-#define MAXIMAL_VALID_BATTERY_TEMP	(120)
-#define BATTERY_PROTECTED_VOLT	(2800)
-#define USB_NO_Cable	0
-#define USB_DETECT_CABLE	1
-#define USB_SHIFT	0
-#define AC_SHIFT	1
-#define USB_Cable ((1 << (USB_SHIFT)) | (USB_DETECT_CABLE))
-#define USB_AC_Adapter ((1 << (AC_SHIFT)) | (USB_DETECT_CABLE))
-#define USB_CALBE_DETECT_MASK (USB_Cable  | USB_DETECT_CABLE)
+//&*&*&*HC1_20120712
+#include <linux/fs.h>
+#include <asm/uaccess.h>
+//&*&*&*HC2_20120712
 
-#define BATTERY_MANUFACTURER_SIZE	12
-#define BATTERY_NAME_SIZE		8
+#define DRIVER_VERSION			"2.0.0"
+#define ADD_ATTRIBUTES_FOR_DEBUG 1
 
-/* Battery flags bit definitions */
-#define BATT_STS_DSG		0x0001
-#define BATT_STS_FC			0x0200
-#define BATT_STS_CHG_INH			0x0800
+#define BQ27541_REG_TEMP		0x06
+#define BQ27541_REG_VOLT		0x08
+#define BQ27541_REG_AI			0x14
+#define BQ27541_REG_FLAGS		0x0A
+#define BQ27541_REG_TTE			0x16
+#define BQ27541_REG_TTF			0x18
+#define BQ27541_REG_TTECP		0x26
+#define BQ27541_REG_FAC			0x0E
+#define BQ27541_REG_FCC			0x12
 
-#define BATT_TEMP_LIMIT		45
+#define BQ27541_REG_SOC			0x2c
+#define BQ27541_FLAG_DSC		BIT(0)
+#define BQ27541_FLAG_FC			BIT(9)
 
-/* Global variable */
-unsigned battery_cable_status = 0;
-unsigned battery_driver_ready = 0;
-static int ac_on ;
-static int usb_on ;
-unsigned int bq27541_i2c_error;
-static unsigned int ota_flag = 0;
-static unsigned int 	battery_current;
-static unsigned int  battery_remaining_capacity;
-static unsigned int bat_check_interval = BATTERY_POLLING_RATE;
-struct workqueue_struct *battery_work_queue = NULL;
+#define BATTERY_POLL_PERIOD		10000
 
-/* Functions declaration */
-static int bq27541_get_psp(int reg_offset, enum power_supply_property psp,union power_supply_propval *val);
-static int bq27541_get_property(struct power_supply *psy,
-	enum power_supply_property psp, union power_supply_propval *val);
-int bq27541_battery_callback(unsigned usb_cable_state);
-extern void touch_callback(uint8_t cable_status);
-//extern unsigned  get_usb_cable_status(void);
+/* If the system has several batteries we need a different name for each
+ * of them...
+ */
+static DEFINE_IDR(battery_id);
+static DEFINE_MUTEX(battery_mutex);
 
-module_param(battery_current, uint, 0644);
-module_param(battery_remaining_capacity, uint, 0644);
-
-#define BQ27541_DATA(_psp, _addr, _min_value, _max_value)	\
-	{								\
-		.psp = POWER_SUPPLY_PROP_##_psp,	\
-		.addr = _addr,				\
-		.min_value = _min_value,		\
-		.max_value = _max_value,	\
-	}
-
-enum {
-       REG_MANUFACTURER_DATA,
-	REG_STATE_OF_HEALTH,
-	REG_TEMPERATURE,
-	REG_VOLTAGE,
-	REG_CURRENT,
-	REG_TIME_TO_EMPTY,
-	REG_TIME_TO_FULL,
-	REG_STATUS,
-	REG_CAPACITY,
-	REG_SERIAL_NUMBER,
-	REG_MAX
+struct bq27541_device_info;
+struct bq27541_access_methods {
+	int (*read)(u8 reg, int *rt_value, int b_single,
+		struct bq27541_device_info *di);
 };
 
-typedef enum {
-	Charger_Type_Battery = 0,
-	Charger_Type_AC,
-	Charger_Type_USB,
-	Charger_Type_Num,
-	Charger_Type_Force32 = 0x7FFFFFFF
-} Charger_Type;
+enum bq27541_chip { BQ27541 };
 
-static struct bq27541_device_data {
-	enum power_supply_property psp;
-	u8 addr;
-	int min_value;
-	int max_value;
-} bq27541_data[] = {
-       [REG_MANUFACTURER_DATA]	= BQ27541_DATA(PRESENT, 0, 0, 65535),
-       [REG_STATE_OF_HEALTH]		= BQ27541_DATA(HEALTH, 0, 0, 65535),
-	[REG_TEMPERATURE]			= BQ27541_DATA(TEMP, 0x06, 0, 65535),
-	[REG_VOLTAGE]				= BQ27541_DATA(VOLTAGE_NOW, 0x08, 0, 6000),
-	[REG_CURRENT]				= BQ27541_DATA(CURRENT_NOW, 0x14, -32768, 32767),
-	[REG_TIME_TO_EMPTY]			= BQ27541_DATA(TIME_TO_EMPTY_AVG, 0x16, 0, 65535),
-	[REG_TIME_TO_FULL]			= BQ27541_DATA(TIME_TO_FULL_AVG, 0x18, 0, 65535),
-	[REG_STATUS]				= BQ27541_DATA(STATUS, 0x0a, 0, 65535),
-	[REG_CAPACITY]				= BQ27541_DATA(CAPACITY, 0x2c, 0, 100),
-};
+struct bq27541_device_info {
+	struct device 		*dev;
+	int			id;
+	struct bq27541_access_methods	*bus;
+	enum bq27541_chip	chip;
+	int			irq;
+	struct i2c_client	*client;
+	struct power_supply	bat;
+	struct power_supply	ac;
+	struct power_supply	usb;
+	/* State Of Connect */
+	int lifesoc;
+	int status;
+	int ac_online;
+	int usb_online;
+	int battery_online;
+	//struct timer_list	battery_poll_timer;
+	struct delayed_work		battery_polling_delay_work;
+	struct delayed_work		battery_updata_delay_work;
+	int fake_soc;
+//&*&*&*HC1_20120525
+	#ifdef CONFIG_CL2N_FAKE_BATTERY
+	bool fake_battery;
+	#endif
+//&*&*&*HC2_20120525
+//&*&*&*AL1_20120814
+	int health_to_dead;
+//&*&*&*AL2_20120814
+//&*&*&*AL1_20121022 //skip battery information before initialization
+	int initial;
+//&*&*&*AL2_20121022 //skip battery information before initialization
+} *bq27541_device;
 
-static enum power_supply_property bq27541_properties[] = {
+static enum power_supply_property bq27541_battery_props[] = {
 	POWER_SUPPLY_PROP_STATUS,
+	//&*&*&*AL1_20120814
 	POWER_SUPPLY_PROP_HEALTH,
+	//&*&*&*AL2_20120814
 	POWER_SUPPLY_PROP_PRESENT,
-	POWER_SUPPLY_PROP_TECHNOLOGY,
+	POWER_SUPPLY_PROP_ONLINE,
 	POWER_SUPPLY_PROP_VOLTAGE_NOW,
+	POWER_SUPPLY_PROP_CURRENT_NOW,
+	POWER_SUPPLY_PROP_CHARGE_FULL_DESIGN,
+	POWER_SUPPLY_PROP_CHARGE_FULL,
 	POWER_SUPPLY_PROP_CAPACITY,
 	POWER_SUPPLY_PROP_TEMP,
-	POWER_SUPPLY_PROP_CURRENT_NOW,
+	POWER_SUPPLY_PROP_TIME_TO_EMPTY_NOW,
+	POWER_SUPPLY_PROP_TIME_TO_EMPTY_AVG,
+	POWER_SUPPLY_PROP_TIME_TO_FULL_NOW,
 };
 
-void check_cabe_type(void)
-{
-      if(battery_cable_status == USB_AC_Adapter) {
-		 ac_on = 1;
-	        usb_on = 0;
-	}
-	else if(battery_cable_status  == USB_Cable) {
-		usb_on = 1;
-		ac_on = 0;
-	}
-	else {
-		ac_on = 0;
-		usb_on = 0;
-	}
-}
-
-static enum power_supply_property power_properties[] = {
+static enum power_supply_property bq27541_ac_props[] = {
 	POWER_SUPPLY_PROP_ONLINE,
 };
 
-static int power_get_property(struct power_supply *psy,
-	enum power_supply_property psp, union power_supply_propval *val)
+static enum power_supply_property bq27541_usb_props[] = {
+	POWER_SUPPLY_PROP_ONLINE,
+};
+
+int bq27541_get_battery_rsoc(void);
+extern int bq275xx_init_development_mode(struct i2c_client *client);
+extern int bq275xx_parameter_update(struct i2c_client *client);
+extern int bq275xx_force_reset(struct i2c_client *client);
+//&*&*&*HC1_20120525
+#ifdef CONFIG_CL2N_FAKE_BATTERY
+#define PMC_SCRATCH20		0xa0
+#define FAKE_BATTERY_MODE	BIT(25)
+bool is_fake_battery(void)
 {
-	int ret=0;
-	switch (psp) {
+	void __iomem *reset = IO_ADDRESS(TEGRA_PMC_BASE + 0x00);
+	u32 reg;
+	bool ret = false;
 
-	case POWER_SUPPLY_PROP_ONLINE:
-		   if(psy->type == POWER_SUPPLY_TYPE_MAINS &&  ac_on)
-			val->intval =  1;
-		   else if (psy->type == POWER_SUPPLY_TYPE_USB && usb_on)
-			val->intval =  1;
-		   else
-			val->intval = 0;
-		break;
+	reg = readl_relaxed(reset + PMC_SCRATCH20);
 
-	default:
-		return -EINVAL;
+	if (reg & FAKE_BATTERY_MODE) {
+		reg &= ~(FAKE_BATTERY_MODE);
+		writel_relaxed(reg, reset + PMC_SCRATCH20);
+		ret = true;
 	}
+
+	printk("%s, fack_battery=%d \n", __func__, ret);
+
 	return ret;
 }
-
-static char *supply_list[] = {
-	"battery",
-	"ac",
-#ifndef REMOVE_USB_POWER_SUPPLY
-	"usb",
 #endif
-};
+//&*&*&*HC2_20120525
 
-static void charger_enable(int enable) {
-	struct power_supply *smb = power_supply_get_by_name("smb347-battery");
-	union power_supply_propval prop_charge_enabled;
+/*
+ * Common code for BQ27541 devices
+ */
 
-	if (!smb)
-		return;
-
-	prop_charge_enabled.intval = enable;
-
-	smb->set_property(smb, POWER_SUPPLY_PROP_CHARGE_ENABLED, &prop_charge_enabled);
+static int bq27541_read(u8 reg, int *rt_value, int b_single,
+			struct bq27541_device_info *di)
+{
+	return di->bus->read(reg, rt_value, b_single, di);
 }
 
-static void bq27541_external_power_changed(struct power_supply *psy)
+/*
+ * Return the battery temperature in tenths of degree Celsius
+ * Or < 0 if something fails.
+ */
+static int bq27541_battery_temperature(struct bq27541_device_info *di)
 {
+	int ret;
+	int temp = 0;
 
-	struct power_supply *smb_usb = power_supply_get_by_name("smb347-usb");
-	struct power_supply *smb_ac = power_supply_get_by_name("smb347-mains");
-	union power_supply_propval usb_online, ac_online;
-
-	if (!smb_usb || !smb_ac)
-		return;
-
-	smb_usb->get_property(smb_usb, POWER_SUPPLY_PROP_ONLINE, &usb_online);
-	smb_ac->get_property(smb_ac, POWER_SUPPLY_PROP_ONLINE, &ac_online);
-
-	if (usb_online.intval)
-		bq27541_battery_callback(USB_Cable);
-	else if (ac_online.intval)
-		bq27541_battery_callback(USB_AC_Adapter);
-	else
-		bq27541_battery_callback(USB_NO_Cable);
-}
-
-static struct power_supply bq27541_supply[] = {
-	{
-		.name		= "battery",
-		.type		= POWER_SUPPLY_TYPE_BATTERY,
-		.properties	= bq27541_properties,
-		.num_properties = ARRAY_SIZE(bq27541_properties),
-		.get_property	= bq27541_get_property,
-		.external_power_changed = bq27541_external_power_changed,
-       },
-	{
-		.name		= "ac",
-		.type		= POWER_SUPPLY_TYPE_MAINS,
-		.supplied_to	= supply_list,
-		.num_supplicants = ARRAY_SIZE(supply_list),
-		.properties = power_properties,
-		.num_properties = ARRAY_SIZE(power_properties),
-		.get_property	= power_get_property,
-	},
-#ifndef REMOVE_USB_POWER_SUPPLY
-	{
-		.name		= "usb",
-		.type		= POWER_SUPPLY_TYPE_USB,
-		.supplied_to	= supply_list,
-		.num_supplicants = ARRAY_SIZE(supply_list),
-		.properties =power_properties,
-		.num_properties = ARRAY_SIZE(power_properties),
-		.get_property = power_get_property,
-	},
-#endif
-};
-
-static struct bq27541_device_info {
-	struct i2c_client *client;
-	struct delayed_work status_poll_work;
-	struct delayed_work low_low_bat_work;
-	struct delayed_work shutdown_en_work;
-	struct wake_lock low_battery_wake_lock;
-	struct wake_lock cable_wake_lock;
-	char device_name[5];
-	int smbus_status;
-	int battery_present;
-	int low_battery_present;
-	int gpio_battery_detect;
-	int gpio_low_battery_detect;
-	int irq_low_battery_detect;
-	int irq_battery_detect;
-	int bat_status;
-	int bat_temp;
-	int bat_vol;
-	int bat_current;
-	int bat_capacity;
-	int cap_zero_count;
-	int shutdown_disable;
-	unsigned int old_capacity;
-	unsigned int cap_err;
-	unsigned int old_temperature;
-	unsigned int temp_err;
-	unsigned int prj_id;
-	spinlock_t lock;
-} *bq27541_device;
-
-static int bq27541_read_i2c(u8 reg, int *rt_value, int b_single)
-{
-	struct i2c_client *client = bq27541_device->client;
-	struct i2c_msg msg[1];
-	unsigned char data[2];
-	int err;
-
-	if (!client->adapter)
-		return -ENODEV;
-
-	msg->addr = client->addr;
-	msg->flags = 0;
-	msg->len = 1;
-	msg->buf = data;
-
-	data[0] = reg;
-	err = i2c_transfer(client->adapter, msg, 1);
-
-	if (err >= 0) {
-		if (!b_single)
-			msg->len = 2;
-		else
-			msg->len = 1;
-
-		msg->flags = I2C_M_RD;
-		err = i2c_transfer(client->adapter, msg, 1);
-		if (err >= 0) {
-			if (!b_single)
-				*rt_value = get_unaligned_le16(data);
-			else
-				*rt_value = data[0];
-
-			return 0;
-		}
+	ret = bq27541_read(BQ27541_REG_TEMP, &temp, 0, di);
+	if (ret) {
+		dev_err(di->dev, "error reading temperature\n");
+		return ret;
 	}
-	return err;
+
+	return temp - 2731;
 }
 
-int bq27541_smbus_read_data(int reg_offset,int byte,int *rt_value)
+/*
+ * Return the battery full charge capacity in mAh
+ */
+static int bq27541_full_charge_capacity(struct bq27541_device_info *di)
 {
-     s32 ret=-EINVAL;
-     int count=0;
+	int tval = 0;
+	int ret;
 
-	do {
-		ret = bq27541_read_i2c(bq27541_data[reg_offset].addr, rt_value, 0);
-	} while((ret<0)&&(++count<=SMBUS_RETRY));
-	return ret;
+	ret = bq27541_read(BQ27541_REG_FCC, &tval, 0, di);
+	if (ret) {
+		dev_err(di->dev, "error reading full charge capacity");
+		return ret;
+	}
+
+	return tval;
 }
 
-int bq27541_smbus_write_data(int reg_offset,int byte, unsigned int value)
+/*
+ * Return the battery available charge capacity in mAh
+ */
+static int bq27541_full_available_capacity(struct bq27541_device_info *di)
 {
-     s32 ret = -EINVAL;
-     int count=0;
+	int tval = 0;
+	int ret;
 
-	do{
-		if(byte){
-			ret = i2c_smbus_write_byte_data(bq27541_device->client,bq27541_data[reg_offset].addr,value&0xFF);
-		}
-		else{
-			ret = i2c_smbus_write_word_data(bq27541_device->client,bq27541_data[reg_offset].addr,value&0xFFFF);
-		}
-	}while((ret<0) && (++count<=SMBUS_RETRY));
-	return ret;
+	ret = bq27541_read(BQ27541_REG_FAC, &tval, 0, di);
+	if (ret) {
+		dev_err(di->dev, "error reading full available capacity");
+		return ret;
+	}
+
+	return tval;
 }
 
-static ssize_t show_battery_smbus_status(struct device *dev, struct device_attribute *devattr, char *buf)
+/*
+ * Return the battery Voltage in milivolts
+ * Or < 0 if something fails.
+ */
+static int bq27541_battery_voltage(struct bq27541_device_info *di)
 {
-	int status=!bq27541_device->smbus_status;
-	return sprintf(buf, "%d\n", status);
+	int ret;
+	int volt = 0;
+
+	ret = bq27541_read(BQ27541_REG_VOLT, &volt, 0, di);
+	if (ret) {
+		dev_err(di->dev, "error reading voltage\n");
+		return ret;
+	}
+	//return volt * 1000;
+	return volt;
 }
 
-static DEVICE_ATTR(battery_smbus, S_IWUSR | S_IRUGO, show_battery_smbus_status,NULL);
-
-static struct attribute *battery_smbus_attributes[] = {
-
-	&dev_attr_battery_smbus.attr,
-	NULL
-};
-
-static const struct attribute_group battery_smbus_group = {
-	.attrs = battery_smbus_attributes,
-};
-
-static int bq27541_battery_current(void)
+/*
+ * Return the battery average current
+ * Note that current can be negative signed as well
+ * Or 0 if something fails.
+ */
+static int bq27541_battery_current(struct bq27541_device_info *di)
 {
 	int ret;
 	int curr = 0;
+	//int flags = 0;
 
-	ret = bq27541_read_i2c(bq27541_data[REG_CURRENT].addr, &curr, 0);
+	ret = bq27541_read(BQ27541_REG_AI, &curr, 0, di);
 	if (ret) {
-		dev_err(&bq27541_device->client->dev, "error reading current ret = %x\n", ret);
+		dev_err(di->dev, "error reading current\n");
 		return 0;
 	}
 
-	curr = (s16)curr;
+	curr = (int)(s16)curr;
+	//&*&*&*AL1_20120814
+	if(curr < 0 && (di->ac_online || di->usb_online))
+		di->health_to_dead = 1;
+	else
+		di->health_to_dead = 0;
+	//&*&*&*AL2_20120814
+	return curr * 1000;
+	//return curr;
 
-	if (curr >= bq27541_data[REG_CURRENT].min_value &&
-		curr <= bq27541_data[REG_CURRENT].max_value) {
-		return curr;
-	} else
-		return 0;
 }
 
-static void battery_status_poll(struct work_struct *work)
+/*
+ * Return the battery Relative State-of-Charge
+ * Or < 0 if something fails.
+ */
+int bq27541_get_battery_rsoc(void)
 {
-	struct bq27541_device_info *batt_dev = container_of(work, struct bq27541_device_info, status_poll_work.work);
-	static bool batt_overheat = false;
+	int ret;
+	int rsoc = 0;
+	if(bq27541_device == NULL)
+		return -1;
 
-	if (!battery_driver_ready)
-		pr_warning("bq27541: %s: battery driver not ready\n", __func__);
-
-	if ((ac_on || usb_on) && (bq27541_device->old_temperature / 10 > BATT_TEMP_LIMIT) && !batt_overheat) {
-		charger_enable(0);
-		batt_overheat = true;
-		dev_info(&bq27541_device->client->dev,
-					"battery temperature too high, disabling charging\n");
-	} else if (batt_overheat) {
-		charger_enable(1);
-		batt_overheat = false;
-		dev_info(&bq27541_device->client->dev,
-					"temperature reduced, enabling charging\n");
+	ret = bq27541_read(BQ27541_REG_SOC, &rsoc, 0, bq27541_device);
+	printk("[bq27541_battery.c]Battery SOC is %d, call by smb349\n", rsoc);
+	if (ret) {
+		dev_err(bq27541_device->dev, "error reading rsoc\n");
+		return bq27541_device->lifesoc;
 	}
 
-	power_supply_changed(&bq27541_supply[Charger_Type_Battery]);
+	if(rsoc == 0)
+		; //reset gauge
+	return rsoc;
+}
+EXPORT_SYMBOL_GPL(bq27541_get_battery_rsoc);
 
-	/* Schedule next polling */
-	queue_delayed_work(battery_work_queue, &batt_dev->status_poll_work, bat_check_interval*HZ);
+static int bq27541_battery_rsoc(struct bq27541_device_info *di)
+{
+	int ret;
+	int rsoc = 0;
+
+	ret = bq27541_read(BQ27541_REG_SOC, &rsoc, 0, di);
+	//printk("[bq27541_battery.c]Battery SOC is %d\n", rsoc);
+	if (ret) {
+		dev_err(di->dev, "error reading rsoc\n");
+		return di->lifesoc;
+	}
+	if(rsoc == 0 && di->lifesoc >= 4)
+	{
+		bq275xx_force_reset(di->client); //reset gauge
+		printk("[bq27541_battery.c]Force Reset bq27541 Gas-Gauge %d\n", rsoc);
+	}
+	di->lifesoc = rsoc;
+	return rsoc;
 }
 
-static void low_low_battery_check(struct work_struct *work)
+static int bq27541_battery_status(struct bq27541_device_info *di,
+				  union power_supply_propval *val)
 {
-	cancel_delayed_work(&bq27541_device->status_poll_work);
-	queue_delayed_work(battery_work_queue,&bq27541_device->status_poll_work, 0.1*HZ);
-	msleep(2000);
-	enable_irq(bq27541_device->irq_low_battery_detect);
+	val->intval = di->status;
+	return 0;
 }
 
-static void shutdown_enable_set(struct work_struct *work)
+/*
+ * Read a time register.
+ * Return < 0 if something fails.
+ */
+static int bq27541_battery_time(struct bq27541_device_info *di, int reg,
+				union power_supply_propval *val)
 {
-	bq27541_device->shutdown_disable = 0;
-	dev_dbg(&bq27541_device->client->dev, "bq27541_device->shutdown_disable = 0\n");
-}
+	int tval = 0;
+	int ret;
 
-static irqreturn_t low_battery_detect_isr(int irq, void *dev_id)
-{
-	disable_irq_nosync(bq27541_device->irq_low_battery_detect);
-	bq27541_device->low_battery_present = gpio_get_value(bq27541_device->gpio_low_battery_detect);
-	dev_info(&bq27541_device->client->dev, "gpio LL_BAT_T30=%d\n", bq27541_device->low_battery_present);
-	wake_lock_timeout(&bq27541_device->low_battery_wake_lock, 10*HZ);
-	queue_delayed_work(battery_work_queue, &bq27541_device->low_low_bat_work, 0.1*HZ);
-
-	return IRQ_HANDLED;
-}
-
-static int setup_low_battery_irq(void)
-{
-	unsigned gpio = GPIOPIN_LOW_BATTERY_DETECT;
-	int ret, irq = gpio_to_irq(gpio);
-
-	ret = gpio_request(gpio, "low_battery_detect");
-	if (ret < 0) {
-		dev_err(&bq27541_device->client->dev, "gpio LL_BAT_T30 request failed\n");
-		goto fail;
+	ret = bq27541_read(reg, &tval, 0, di);
+	if (ret) {
+		dev_err(di->dev, "error reading register %02x\n", reg);
+		return ret;
 	}
 
-	ret = gpio_direction_input(gpio);
-	if (ret < 0) {
-		dev_err(&bq27541_device->client->dev, "gpio LL_BAT_T30 unavaliable for input\n");
-		goto fail_gpio;
+	if (tval == 65535)
+		return -ENODATA;
+
+	val->intval = tval * 60;
+	return 0;
+}
+
+//&*&*&*HC1_20120525
+#ifdef CONFIG_CL2N_FAKE_BATTERY
+int bq27541_fake_battery_get_property(enum power_supply_property psp, union power_supply_propval *val)
+{
+	int ret = 0;
+
+	switch (psp) {
+	case POWER_SUPPLY_PROP_ONLINE:
+			val->intval = 0;
+		break;
+	case POWER_SUPPLY_PROP_STATUS:
+			val->intval = 1; // not charging
+		break;
+	case POWER_SUPPLY_PROP_VOLTAGE_NOW:
+	case POWER_SUPPLY_PROP_PRESENT:
+			val->intval = 4000;
+
+		if (psp == POWER_SUPPLY_PROP_PRESENT)
+			val->intval = val->intval <= 0 ? 0 : 1;
+		break;
+	case POWER_SUPPLY_PROP_CURRENT_NOW:
+			val->intval = 100000000;
+		break;
+	case POWER_SUPPLY_PROP_CHARGE_FULL_DESIGN:
+			val->intval = 6000;
+		break;
+	case POWER_SUPPLY_PROP_CHARGE_FULL:
+			val->intval = 6000;
+		break;
+	case POWER_SUPPLY_PROP_CAPACITY:
+			val->intval = 100;
+		break;
+	case POWER_SUPPLY_PROP_TEMP:
+			val->intval = 250;
+		break;
+	case POWER_SUPPLY_PROP_TIME_TO_EMPTY_NOW:
+			val->intval = 60000;
+		break;
+	case POWER_SUPPLY_PROP_TIME_TO_EMPTY_AVG:
+			val->intval = 60000;
+		break;
+	case POWER_SUPPLY_PROP_TIME_TO_FULL_NOW:
+			val->intval = 60000;
+		break;
+	default:
+		return -EINVAL;
 	}
 
-	ret = request_irq(irq, low_battery_detect_isr, IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING,
-			"bq27541-battery (low battery)", NULL);
-	if (ret < 0) {
-		dev_err(&bq27541_device->client->dev, "gpio LL_BAT_T30 irq request failed\n");
-		goto fail_irq;
+	return ret;
+}
+#endif
+//&*&*&*HC2_20120525
+
+static int bq27541_battery_get_property(struct power_supply *psy,
+					enum power_supply_property psp,
+					union power_supply_propval *val)
+{
+	int ret = 0;
+	struct bq27541_device_info *di = bq27541_device;
+
+//&*&*&*HC1_20120525
+	#ifdef CONFIG_CL2N_FAKE_BATTERY
+	if (di->fake_battery) {
+		return  bq27541_fake_battery_get_property(psp, val);
+	}
+	#endif
+//&*&*&*HC2_20120525
+
+	//&*&*&*AL1_20121024 //skip battery information before initialization
+	if(!di->initial)
+	{
+		//printk("[bq27541_battery.c]nothing to do before initialization.\n",	__func__);
+		return -ENODATA;
+	}
+	//&*&*&*AL2_20121024 //skip battery information before initialization
+
+	switch (psp) {
+	case POWER_SUPPLY_PROP_ONLINE:
+		if(di->battery_online)
+			val->intval = 1;
+		else
+			val->intval = 0;
+		break;
+	case POWER_SUPPLY_PROP_STATUS:
+		ret = bq27541_battery_status(di, val);
+		break;
+	//&*&*&*AL1_20120814
+	case POWER_SUPPLY_PROP_HEALTH:
+			val->intval = POWER_SUPPLY_HEALTH_GOOD; // not charging
+			if(di->health_to_dead)
+				val->intval = POWER_SUPPLY_HEALTH_UNSPEC_FAILURE;
+		break;
+	//&*&*&*AL2_20120814
+	case POWER_SUPPLY_PROP_VOLTAGE_NOW:
+	case POWER_SUPPLY_PROP_PRESENT:
+		//&*&*&*AL1_20120814
+		val->intval = bq27541_battery_voltage(di) * 1000;
+		//&*&*&*AL2_20120814
+		if (psp == POWER_SUPPLY_PROP_PRESENT)
+			val->intval = val->intval <= 0 ? 0 : 1;
+		break;
+	case POWER_SUPPLY_PROP_CURRENT_NOW:
+		val->intval = bq27541_battery_current(di);
+		break;
+	case POWER_SUPPLY_PROP_CHARGE_FULL_DESIGN:
+		val->intval = bq27541_full_charge_capacity(di);
+		break;
+	case POWER_SUPPLY_PROP_CHARGE_FULL:
+		val->intval = bq27541_full_available_capacity(di);
+		break;
+	case POWER_SUPPLY_PROP_CAPACITY:
+		if(di->fake_soc != 1)
+			val->intval = di->fake_soc;
+		else
+			val->intval = bq27541_battery_rsoc(di);
+		break;
+	case POWER_SUPPLY_PROP_TEMP:
+		val->intval = bq27541_battery_temperature(di);
+		break;
+	case POWER_SUPPLY_PROP_TIME_TO_EMPTY_NOW:
+		ret = bq27541_battery_time(di, BQ27541_REG_TTE, val);
+		break;
+	case POWER_SUPPLY_PROP_TIME_TO_EMPTY_AVG:
+		ret = bq27541_battery_time(di, BQ27541_REG_TTECP, val);
+		break;
+	case POWER_SUPPLY_PROP_TIME_TO_FULL_NOW:
+		ret = bq27541_battery_time(di, BQ27541_REG_TTF, val);
+		break;
+	default:
+		return -EINVAL;
 	}
 
-	bq27541_device->low_battery_present = gpio_get_value(gpio);
-	bq27541_device->irq_low_battery_detect = gpio_to_irq(gpio);
-	dev_dbg(&bq27541_device->client->dev, "irq=%d, LL_BAT_T30=%d\n",
-		irq, bq27541_device->low_battery_present);
-
-	enable_irq_wake(bq27541_device->irq_low_battery_detect);
-
-fail_irq:
-fail_gpio:
-	gpio_free(gpio);
-fail:
 	return ret;
 }
 
-int bq27541_battery_callback(unsigned usb_cable_state)
+static int bq27541_ac_get_property(struct power_supply *psy,
+					enum power_supply_property psp,
+					union power_supply_propval *val)
 {
-	int old_cable_status;
+	int ret = 0;
+	struct bq27541_device_info *di = bq27541_device;
 
-	if (!battery_driver_ready) {
-		pr_warning("%s: battery driver not ready\n", __func__);
+	switch (psp) {
+	case POWER_SUPPLY_PROP_ONLINE:
+		if(di->ac_online)
+			val->intval = 1;
+		else
+			val->intval = 0;
+		break;
+	default:
+		return -EINVAL;
+	}
+
+	return ret;
+}
+
+static int bq27541_usb_get_property(struct power_supply *psy,
+					enum power_supply_property psp,
+					union power_supply_propval *val)
+{
+	int ret = 0;
+	struct bq27541_device_info *di = bq27541_device;
+
+	switch (psp) {
+	case POWER_SUPPLY_PROP_ONLINE:
+		if(di->usb_online)
+			val->intval = 1;
+		else
+			val->intval = 0;
+		break;
+	default:
+		return -EINVAL;
+	}
+
+	return ret;
+}
+
+static void bq27541_charger_status(enum charging_states status, enum charger_type chrg_type, void *data)
+{
+	struct bq27541_device_info *di = (struct bq27541_device_info *)data;
+
+	mutex_lock(&battery_mutex);
+	di->ac_online = 0;
+	di->usb_online = 0;
+	di->battery_online = 0;
+	if (chrg_type == AC)
+		di->ac_online = 1;
+	else if (chrg_type == USB)
+		di->usb_online = 1;
+	else
+		di->battery_online = 1;
+
+	if (status == progress)
+		di->status = POWER_SUPPLY_STATUS_CHARGING;
+	else if (status == completed)
+		di->status = POWER_SUPPLY_STATUS_FULL;
+	else if (status >= stopped)
+		di->status = POWER_SUPPLY_STATUS_NOT_CHARGING;
+	else
+	{
+		if((chrg_type >= AC) && (di->lifesoc >= 100))
+			di->status = POWER_SUPPLY_STATUS_FULL;
+		else
+			di->status = POWER_SUPPLY_STATUS_DISCHARGING;
+	}
+	mutex_unlock(&battery_mutex);
+
+	//&*&*&*AL1_20121022 //skip battery information before initialization
+	if(di->initial)
+	//&*&*&*AL2_20121022 //skip battery information before initialization
+	power_supply_changed(&di->bat);
+}
+
+static int bq27541_powersupply_init(struct bq27541_device_info *di)
+{
+	int retval;
+	struct power_supply *battery, *ac, *usb;
+
+	ac = &di->ac;
+	ac->type = POWER_SUPPLY_TYPE_MAINS;
+	ac->properties = bq27541_ac_props;
+	ac->num_properties = ARRAY_SIZE(bq27541_ac_props);
+	ac->get_property = bq27541_ac_get_property;
+	ac->external_power_changed = NULL;
+	retval = power_supply_register(&di->client->dev, ac);
+	if (retval) {
+		dev_err(&di->client->dev, "failed to register ac\n");
+		goto ac_failed;
+	}
+
+	usb = &di->usb;
+	usb->type = POWER_SUPPLY_TYPE_USB;
+	usb->properties = bq27541_usb_props;
+	usb->num_properties = ARRAY_SIZE(bq27541_usb_props);
+	usb->get_property = bq27541_usb_get_property;
+	usb->external_power_changed = NULL;
+	retval = power_supply_register(&di->client->dev, usb);
+	if (retval) {
+		dev_err(&di->client->dev, "failed to register usb\n");
+		goto usb_failed;
+	}
+
+	battery = &di->bat;
+	battery->type = POWER_SUPPLY_TYPE_BATTERY;
+	battery->properties = bq27541_battery_props;
+	battery->num_properties = ARRAY_SIZE(bq27541_battery_props);
+	battery->get_property = bq27541_battery_get_property;
+	battery->external_power_changed = NULL;
+	retval = power_supply_register(&di->client->dev, battery);
+	if (retval) {
+		dev_err(&di->client->dev, "failed to register battery\n");
+		goto batt_failed;
+	}
+
+	return 0;
+
+batt_failed:
+	power_supply_unregister(&di->usb);
+usb_failed:
+	power_supply_unregister(&di->ac);
+ac_failed:
+	return retval;
+}
+
+/*
+ * i2c specific code
+ */
+
+static int bq27541_read_i2c(u8 reg, int *rt_value, int b_single,
+			struct bq27541_device_info *di)
+{
+	s32 data;
+	struct i2c_client *client = di->client;
+
+	if (!b_single)
+		data = i2c_smbus_read_word_data(client, reg);
+	else
+		data = i2c_smbus_read_byte_data(client, reg);
+
+	if (data < 0)
+		return data;
+	else
+	{
+		*rt_value = *((s16 *)(&data));
 		return 0;
 	}
+}
 
-	old_cable_status = battery_cable_status;
-	battery_cable_status = usb_cable_state;
+#if 0
+static irqreturn_t ac_present_irq(int irq, void *data)
+{
+	power_supply_changed(&bq27541_device->ac);
+	power_supply_changed(&bq27541_device->bat);
+	return IRQ_HANDLED;
+}
+#endif
 
-	dev_info(&bq27541_device->client->dev, "usb_cable_state = %x\n", usb_cable_state);
+#ifdef ADD_ATTRIBUTES_FOR_DEBUG
+static ssize_t bq27541_fake_soc_show(struct device *dev,
+				    struct device_attribute *attr, char *buf)
+{
+	struct bq27541_device_info *di = dev_get_drvdata(dev);
 
-	if (old_cable_status != battery_cable_status) {
-		dev_dbg(&bq27541_device->client->dev, "%s: cable_wake_lock 5 sec...\n", __func__);
-		wake_lock_timeout(&bq27541_device->cable_wake_lock, 5*HZ);
+	return sprintf(buf, "%u\n", di->fake_soc);
+}
+
+static ssize_t bq27541_fake_soc_store(struct device *dev,
+				     struct device_attribute *attr,
+				     const char *buf, size_t count)
+{
+	struct bq27541_device_info *di = dev_get_drvdata(dev);
+	long unsigned int val;
+	int error;
+
+	error = strict_strtoul(buf, 10, &val);
+	if (error)
+		return error;
+
+	if(val == 28239)
+	{
+		bq275xx_init_development_mode(di->client);
+		printk("[bq27541 gauge]Enable data flash mode : %lu...\n", val);
 	}
-	check_cabe_type();
-
-	touch_callback(battery_cable_status);
-
-	if(!battery_cable_status) {
-		if (old_cable_status == USB_AC_Adapter) {
-			power_supply_changed(&bq27541_supply[Charger_Type_AC]);
-		}
-		#ifndef REMOVE_USB_POWER_SUPPLY
-		else if ( old_cable_status == USB_Cable) {
-			power_supply_changed(&bq27541_supply[Charger_Type_USB]);
-		}
-		#endif
+	else if(val>=0 && val<105)
+	{
+		di->fake_soc = val;
+		if(di->fake_soc == 1)
+			printk("[bq27541 gauge]Disable fake soc : %d...\n", di->fake_soc);
 	}
-	#ifndef REMOVE_USB_POWER_SUPPLY
-	else if (battery_cable_status == USB_Cable && old_cable_status != USB_Cable) {
-		power_supply_changed(&bq27541_supply[Charger_Type_USB]);
+
+	return count;
+}
+
+static DEVICE_ATTR(fake_soc, 0664, bq27541_fake_soc_show, bq27541_fake_soc_store);
+
+static struct attribute *bq27541_attributes[] = {
+	&dev_attr_fake_soc.attr,
+	NULL
+};
+
+static const struct attribute_group bq27541_attr_group = {
+	.attrs = bq27541_attributes,
+};
+#endif
+
+static void battery_poll_worker_func(struct work_struct *work)
+{
+	struct bq27541_device_info *di = container_of(work, struct bq27541_device_info, battery_polling_delay_work.work);
+	int val;
+
+	//&*&*&*AL1_20121024 //skip battery information before initialization
+	if(di->initial)
+		power_supply_changed(&di->bat);
+	//&*&*&*AL2_20121024 //skip battery information before initialization
+
+//&*&*&*HC1_20120525
+	#ifdef CONFIG_CL2N_FAKE_BATTERY
+	if (!di->fake_battery) {
+	#endif
+	val = bq27541_battery_voltage(di);
+	if(val%1000 <100)
+		printk("Battery Voltage: %d.0%d V\n",val/1000, val%1000);
+	else
+		printk("Battery Voltage: %d.%d V\n",val/1000, val%1000);
+	val = bq27541_battery_current(di);
+	printk("Battery Current: %d mA\n",val/1000);
+	val = bq27541_battery_rsoc(di);
+	printk("Battery Soc: %d %%\n", val);
+	val = bq27541_battery_temperature(di);
+	printk("Battery Temperature: %d.%d C\n",val/10, val%10);
+
+	schedule_delayed_work(&di->battery_polling_delay_work, 10*HZ);
+	#ifdef CONFIG_CL2N_FAKE_BATTERY
+	} else {
+		printk("Fake battery \n");
 	}
 	#endif
-	else if (battery_cable_status == USB_AC_Adapter && old_cable_status != USB_AC_Adapter) {
-		power_supply_changed(&bq27541_supply[Charger_Type_AC]);
-	}
-	cancel_delayed_work(&bq27541_device->status_poll_work);
-	queue_delayed_work(battery_work_queue, &bq27541_device->status_poll_work, 2*HZ);
+//&*&*&*HC2_20120525
 
-	return 1;
 }
 
-static int bq27541_get_health(enum power_supply_property psp,
-	union power_supply_propval *val)
+static void battery_updata_worker_func(struct work_struct *work)
 {
-	if (psp == POWER_SUPPLY_PROP_PRESENT) {
-		val->intval = 1;
-	}
-	else if (psp == POWER_SUPPLY_PROP_HEALTH) {
-		val->intval = POWER_SUPPLY_HEALTH_GOOD;
-	}
-	return 0;
+	struct bq27541_device_info *di = container_of(work, struct bq27541_device_info, battery_updata_delay_work.work);
+
+	bq275xx_init_development_mode(di->client);
+	bq275xx_parameter_update(di->client);
+	//&*&*&*AL1_20121022 //skip battery information before initialization
+	di->initial = 1;
+	//&*&*&*AL2_20121022 //skip battery information before initialization
 }
 
-static int bq27541_get_psp(int reg_offset, enum power_supply_property psp,
-	union power_supply_propval *val)
+static int bq27541_battery_probe(struct i2c_client *client,
+				 const struct i2c_device_id *id)
 {
-	s32 ret;
-	int rt_value=0;
-	static char *status_text[] = {"Unknown", "Charging", "Discharging", "Not charging", "Full"};
+	struct bq27541_access_methods *bus;
+	int num;
+	int retval = 0;
 
-	bq27541_device->smbus_status = bq27541_smbus_read_data(reg_offset, 0, &rt_value);
-
-	if ((bq27541_device->smbus_status < 0) && (psp != POWER_SUPPLY_PROP_TEMP)) {
-		dev_err(&bq27541_device->client->dev, "%s: i2c read for %d failed\n", __func__, reg_offset);
-
-		if (bq27541_i2c_error < 3) {
-			bq27541_i2c_error++;
-			if (battery_driver_ready) {
-				cancel_delayed_work(&bq27541_device->status_poll_work);
-				queue_delayed_work(battery_work_queue,&bq27541_device->status_poll_work, 1*HZ);
-			}
-			if(bq27541_i2c_error == 3) {
-				dev_info(&bq27541_device->client->dev, "disabling charging\n");
-				charger_enable(0);
-			}
-			dev_info(&bq27541_device->client->dev, "bq27541_i2c_error=%d\n", bq27541_i2c_error);
-		}
-		return -EINVAL;
-	} else if (bq27541_device->smbus_status >= 0) {
-		if (bq27541_i2c_error)
-			bq27541_i2c_error--;
-	}
-
-	if (psp == POWER_SUPPLY_PROP_VOLTAGE_NOW) {
-		if (rt_value >= bq27541_data[REG_VOLTAGE].min_value &&
-			rt_value <= bq27541_data[REG_VOLTAGE].max_value) {
-			if (rt_value > BATTERY_PROTECTED_VOLT) {
-				val->intval = bq27541_device->bat_vol = rt_value*1000;
-				bq27541_i2c_error = 0;
-			} else {
-				val->intval = bq27541_device->bat_vol;
-			}
-		} else {
-			val->intval = bq27541_device->bat_vol;
-		}
-		dev_dbg(&bq27541_device->client->dev, "voltage_now=%u\n", val->intval);
-	}
-	if (psp == POWER_SUPPLY_PROP_STATUS) {
-		ret = bq27541_device->bat_status = rt_value;
-
-		if (ac_on || usb_on) {            /* Charging detected */
-			if (bq27541_device->old_capacity == 100)
-				val->intval = POWER_SUPPLY_STATUS_FULL;
-			else {
-				val->intval = POWER_SUPPLY_STATUS_CHARGING;
-				if (ret & BATT_STS_CHG_INH) {
-					if (ota_flag == 0) {
-						dev_info(&bq27541_device->client->dev,
-							"temperature is outside the range, disabling charging\n");
-						charger_enable(0);
-						ota_flag = 1;
-					}
-					val->intval = POWER_SUPPLY_STATUS_NOT_CHARGING;
-				} else {
-					if (ota_flag) {
-						dev_info(&bq27541_device->client->dev, "enabling charging\n");
-						charger_enable(1);
-						ota_flag = 0;
-					}
-				}
-			}
-		} else if (ret & BATT_STS_FC) {                          /* Full-charged condition reached */
-			if (!ac_on)
-				val->intval = POWER_SUPPLY_STATUS_DISCHARGING;
-			else
-				val->intval = POWER_SUPPLY_STATUS_FULL;
-		} else if (ret & BATT_STS_DSG) {                       /* Discharging detected */
-			val->intval = POWER_SUPPLY_STATUS_DISCHARGING;
-		} else {
-			val->intval = POWER_SUPPLY_STATUS_NOT_CHARGING;
-		}
-		dev_dbg(&bq27541_device->client->dev, "status=%s ret=0x%04x\n", status_text[val->intval], ret);
-		bq27541_i2c_error = 0;
-	} else if (psp == POWER_SUPPLY_PROP_TEMP) {
-		ret = bq27541_device->bat_temp = rt_value;
-
-		if (bq27541_device->smbus_status >=0) {
-			if (rt_value >= bq27541_data[REG_TEMPERATURE].min_value &&
-				rt_value <= bq27541_data[REG_TEMPERATURE].max_value) {
-				ret = (int)(u16)(((rt_value/10) - 273)*10);
-				if (ret>=0 && ret<=1000) {
-					if(bq27541_device->temp_err)
-						bq27541_device->temp_err--;
-				} else {
-					bq27541_device->temp_err++;
-				}
-			} else {
-				bq27541_device->temp_err++;
-			}
-		} else {
-			bq27541_device->temp_err++;
-		}
-
-		if (bq27541_device->temp_err) {
-			dev_info(&bq27541_device->client->dev, "error: temperature ret=%d, old_temp=%d \n",
-				rt_value, bq27541_device->old_temperature);
-
-			if (bq27541_device->old_temperature != 0xFF) {
-				ret = bq27541_device->old_temperature;
-			} else {
-				bq27541_device->temp_err--;
-				return -EINVAL;
-			}
-
-			if (bq27541_device->temp_err > 2) {
-				dev_info(&bq27541_device->client->dev, "error: temp_err > 2, shut down system \n");
-				WARN_ON(1);
-				ret = MAXIMAL_VALID_BATTERY_TEMP;
-			}
-		}
-		bq27541_device->old_temperature = val->intval = ret;
-		dev_dbg(&bq27541_device->client->dev, "temperature=%u\n", val->intval);
-	}
-	if (psp == POWER_SUPPLY_PROP_CURRENT_NOW) {
-		val->intval = bq27541_device->bat_current
-			= bq27541_battery_current();
-		dev_dbg(&bq27541_device->client->dev, "current=%d\n", val->intval);
-	}
-	return 0;
-}
-
-static int bq27541_get_capacity(union power_supply_propval *val)
-{
-	s32 ret;
-	s32 temp_capacity;
-	int smb_retry=0;
-	int cap = 0;
-
-	do {
-		bq27541_device->smbus_status = bq27541_smbus_read_data(REG_CAPACITY, 0 ,&bq27541_device->bat_capacity);
-	} while((bq27541_device->smbus_status < 0) && ( ++smb_retry <= SMBUS_RETRY));
-
-	if (bq27541_device->smbus_status < 0) {
-		dev_err(&bq27541_device->client->dev, "%s: i2c read for %d "
-			"failed bq27541_device->cap_err=%u\n", __func__, REG_CAPACITY, bq27541_device->cap_err);
-
-		if(bq27541_device->cap_err>5 || (bq27541_device->old_capacity == 0xFF)) {
-			return -EINVAL;
-		} else {
-			val->intval = bq27541_device->old_capacity;
-			bq27541_device->cap_err++;
-			dev_info(&bq27541_device->client->dev, "cap_err=%u use old capacity=%u\n",
-				bq27541_device->cap_err, val->intval);
-			return 0;
-		}
-	}
-
-	ret = bq27541_device->bat_capacity;
-
-	temp_capacity = ((ret >= 100) ? 100 : ret);
-
-	/* start: for mapping %99 to 100%. Lose 84%*/
-	if(temp_capacity==99)
-		temp_capacity=100;
-	if(temp_capacity >=84 && temp_capacity <=98)
-		temp_capacity++;
-	/* for mapping %99 to 100% */
-
-	 /* lose 26% 47% 58%,69%,79% */
-	if(temp_capacity >70 && temp_capacity <80)
-		temp_capacity-=1;
-	else if(temp_capacity >60&& temp_capacity <=70)
-		temp_capacity-=2;
-	else if(temp_capacity >50&& temp_capacity <=60)
-		temp_capacity-=3;
-	else if(temp_capacity >30&& temp_capacity <=50)
-		temp_capacity-=4;
-	else if(temp_capacity >=0&& temp_capacity <=30)
-		temp_capacity-=5;
-
-	/*Re-check capacity to avoid  that temp_capacity <0*/
-	temp_capacity = ((temp_capacity <0) ? 0 : temp_capacity);
-
-	if ((temp_capacity == 0) && (bq27541_device->shutdown_disable == 0) && battery_cable_status) {
-		bq27541_device->cap_zero_count++;
-		if (bq27541_device->cap_zero_count < 2) {
-			msleep(1);
-			bq27541_read_i2c(bq27541_data[REG_CAPACITY].addr, &cap, 0);
-			dev_info(&bq27541_device->client->dev, "temp_capacity=%d, cap=%d, report capacity use: %d \n",
-				temp_capacity, cap, (cap>5) ? bq27541_device->old_capacity : temp_capacity);
-			if (cap > 5) {
-				temp_capacity = bq27541_device->old_capacity;
-			}
-		} else { // >=2
-			//if (bq27541_device->cap_zero_count >=3) {
-				bq27541_device->cap_zero_count = 0;
-				bq27541_device->shutdown_disable = 1;
-				dev_info(&bq27541_device->client->dev, "cheating cable out to shutdown system\n");
-				bq27541_battery_callback(0);
-			//}
-		}
-	} else {
-		bq27541_device->cap_zero_count = 0;
-	}
-
-	if (temp_capacity <= 4 && bq27541_device->old_capacity > 4) {
-		bat_check_interval = 1;
-		dev_info(&bq27541_device->client->dev, "bat_check_interval=%d\n", bat_check_interval);
-	} else if (temp_capacity <= 15 && bq27541_device->old_capacity > 15) {
-		bat_check_interval = 30;
-		dev_info(&bq27541_device->client->dev, "bat_check_interval=%d\n", bat_check_interval);
-	} else {
-		if ((temp_capacity > 5) && (bat_check_interval == 1)) {
-			bat_check_interval = 30;
-			dev_info(&bq27541_device->client->dev, "bat_check_interval=%d\n", bat_check_interval);
-		} else if (temp_capacity > 16 && bat_check_interval != 60) {
-			bat_check_interval = 60;
-			dev_info(&bq27541_device->client->dev, "bat_check_interval=%d\n", bat_check_interval);
-		}
-	}
-
-	val->intval = temp_capacity;
-
-	bq27541_device->old_capacity = val->intval;
-	bq27541_device->cap_err=0;
-
-	dev_dbg(&bq27541_device->client->dev, "=%u ret=%u\n", val->intval, bq27541_device->bat_capacity);
-	return 0;
-}
-
-static int bq27541_get_property(struct power_supply *psy,
-	enum power_supply_property psp,
-	union power_supply_propval *val)
-{
-	u8 count;
-	switch (psp) {
-		case POWER_SUPPLY_PROP_PRESENT:
-		case POWER_SUPPLY_PROP_HEALTH:
-			if (bq27541_get_health(psp, val))
-				goto error;
-			break;
-
-		case POWER_SUPPLY_PROP_TECHNOLOGY:
-			val->intval = POWER_SUPPLY_TECHNOLOGY_LION;
-			break;
-
-		case POWER_SUPPLY_PROP_CAPACITY:
-			if (bq27541_get_capacity(val))
-				goto error;
-			break;
-
-		case POWER_SUPPLY_PROP_STATUS:
-		case POWER_SUPPLY_PROP_VOLTAGE_NOW:
-		case POWER_SUPPLY_PROP_CURRENT_NOW:
-		case POWER_SUPPLY_PROP_TEMP:
-		case POWER_SUPPLY_PROP_TIME_TO_EMPTY_AVG:
-		case POWER_SUPPLY_PROP_TIME_TO_FULL_AVG:
-		case POWER_SUPPLY_PROP_SERIAL_NUMBER:
-			for (count = 0; count < REG_MAX; count++) {
-				if (psp == bq27541_data[count].psp)
-					break;
-			}
-
-			if (bq27541_get_psp(count, psp, val))
-				return -EINVAL;
-			break;
-
-		default:
-			dev_err(&bq27541_device->client->dev,
-				"%s: INVALID property psp=%u\n", __func__,psp);
-			return -EINVAL;
-	}
-
-	return 0;
-
-error:
-
-	return -EINVAL;
-}
-
-static int is_legal_pack(void)
-{
-	char data[7];
-	int ret, retry = 3;
-
-	while(--retry > 0)
-	{
-		ret = i2c_smbus_read_i2c_block_data(bq27541_device->client, 0x63, 7, data);
-		if (ret >= 0) {
-			if(!strncmp(data, "ME370", 5)) {
-				strncpy(bq27541_device->device_name, data, 5);
-				dev_dbg(&bq27541_device->client->dev, "device name: %s\n", bq27541_device->device_name);
-				return 1;
-			}
-		}
-	}
-	dev_warn(&bq27541_device->client->dev, "device name: not found\n");
-	return 0;
-}
-
-static int bq27541_probe(struct i2c_client *client,
-	const struct i2c_device_id *id)
-{
-	int ret, i=0;
+	/* Get new ID for the new battery device */
+	retval = idr_pre_get(&battery_id, GFP_KERNEL);
+	if (retval == 0)
+		return -ENOMEM;
+	mutex_lock(&battery_mutex);
+	retval = idr_get_new(&battery_id, client, &num);
+	mutex_unlock(&battery_mutex);
+	if (retval < 0)
+		return retval;
 
 	bq27541_device = kzalloc(sizeof(*bq27541_device), GFP_KERNEL);
-	if (!bq27541_device)
-		return -ENOMEM;
+	if (!bq27541_device) {
+		dev_err(&client->dev, "failed to allocate device info data\n");
+		retval = -ENOMEM;
+		goto batt_failed_2;
+	}
+	bq27541_device->id = num;
+	bq27541_device->chip = id->driver_data;
 
-	memset(bq27541_device, 0, sizeof(*bq27541_device));
-	bq27541_device->client = client;
+	bus = kzalloc(sizeof(*bus), GFP_KERNEL);
+	if (!bus) {
+		dev_err(&client->dev, "failed to allocate access method "
+					"data\n");
+		retval = -ENOMEM;
+		goto batt_failed_3;
+	}
+
 	i2c_set_clientdata(client, bq27541_device);
-       bq27541_device->smbus_status = 0;
-       bq27541_device->cap_err = 0;
-	bq27541_device->temp_err = 0;
-	bq27541_device->old_capacity = 0xFF;
-       bq27541_device->old_temperature = 0xFF;
-	bq27541_device->gpio_low_battery_detect = GPIOPIN_LOW_BATTERY_DETECT;
-	bq27541_device->shutdown_disable = 1;
-	bq27541_device->cap_zero_count = 0;
+	bq27541_device->dev = &client->dev;
+	bq27541_device->bat.name = "battery";
+	bq27541_device->ac.name = "ac";
+	bq27541_device->usb.name = "usb";
+	bus->read = &bq27541_read_i2c;
+	bq27541_device->bus = bus;
+	bq27541_device->client = client;
+	bq27541_device->irq = client->irq;
+	bq27541_device->fake_soc = 1;
+//&*&*&*HC1_20120525
+	#ifdef CONFIG_CL2N_FAKE_BATTERY
+	bq27541_device->fake_battery = is_fake_battery();
+	#endif
+//&*&*&*HC2_20120525
 
-	if(!is_legal_pack()) {
-		dev_info(&bq27541_device->client->dev, "disabling charging\n");
-		charger_enable(0);
+	retval = bq27541_powersupply_init(bq27541_device);
+	if (retval) {
+		dev_err(&client->dev, "failed to register power_suuply\n");
+		goto batt_failed_5;
 	}
 
-	for (i = 0; i < ARRAY_SIZE(bq27541_supply); i++) {
-		ret = power_supply_register(&client->dev, &bq27541_supply[i]);
-		if (ret) {
-			dev_err(&bq27541_device->client->dev, "Failed to register power supply\n");
-			while (i--)
-				power_supply_unregister(&bq27541_supply[i]);
-				kfree(bq27541_device);
-			return ret;
-		}
+	/*
+	retval = request_threaded_irq(bq27541_device->irq, NULL,
+		ac_present_irq,
+		IRQF_TRIGGER_FALLING | IRQF_TRIGGER_RISING,
+		"ac_present", bq27541_device);
+	if (retval < 0) {
+		dev_err(&client->dev, "failed to request irq for battery\n");
+		goto batt_failed_4;
 	}
+	*/
+	retval = register_callback(bq27541_charger_status, bq27541_device);
+	if (retval < 0)
+		dev_info(&client->dev, "register smb349 callback error\n");
 
-	battery_work_queue = create_singlethread_workqueue("battery_workqueue");
-	INIT_DELAYED_WORK(&bq27541_device->status_poll_work, battery_status_poll);
-	INIT_DELAYED_WORK(&bq27541_device->low_low_bat_work, low_low_battery_check);
-	INIT_DELAYED_WORK(&bq27541_device->shutdown_en_work, shutdown_enable_set);
-	cancel_delayed_work(&bq27541_device->status_poll_work);
+#ifdef ADD_ATTRIBUTES_FOR_DEBUG
+	retval = sysfs_create_group(&client->dev.kobj, &bq27541_attr_group);
+	if (retval)
+		dev_err(&client->dev, "%s() error in creating sysfs attribute" , __func__);
+#endif
 
-	spin_lock_init(&bq27541_device->lock);
-	wake_lock_init(&bq27541_device->low_battery_wake_lock, WAKE_LOCK_SUSPEND, "low_battery_detection");
-	wake_lock_init(&bq27541_device->cable_wake_lock, WAKE_LOCK_SUSPEND, "cable_state_changed");
+	INIT_DELAYED_WORK(&bq27541_device->battery_polling_delay_work, battery_poll_worker_func);
+	schedule_delayed_work(&bq27541_device->battery_polling_delay_work, 10*HZ);
 
-	/* Register sysfs */
-	ret = sysfs_create_group(&client->dev.kobj, &battery_smbus_group);
-	if (ret) {
-		dev_err(&client->dev, "bq27541_probe: unable to create sysfs group\n");
+	INIT_DELAYED_WORK(&bq27541_device->battery_updata_delay_work, battery_updata_worker_func);
+	schedule_delayed_work(&bq27541_device->battery_updata_delay_work, 2*HZ);
+	\
+	dev_info(&client->dev, "support ver. %s enabled\n", DRIVER_VERSION);
+
+	retval = update_charger_status();
+	if (retval) {
+		dev_err(&client->dev, "failed: update_charger_status\n");
 	}
-
-	setup_low_battery_irq();
-
-	battery_driver_ready = 1;
-
-	//battery_cable_status = get_usb_cable_status();
-	queue_delayed_work(battery_work_queue, &bq27541_device->shutdown_en_work, 40*HZ);
-	queue_delayed_work(battery_work_queue, &bq27541_device->status_poll_work, 15*HZ);
-
-	dev_info(&bq27541_device->client->dev, "probed\n");
 
 	return 0;
+batt_failed_5:
+	//free_irq(bq27541_device->irq, bq27541_device);
+	kfree(bus);
+batt_failed_3:
+	kfree(bq27541_device);
+batt_failed_2:
+	mutex_lock(&battery_mutex);
+	idr_remove(&battery_id, num);
+	mutex_unlock(&battery_mutex);
+
+	return retval;
 }
 
-static int bq27541_remove(struct i2c_client *client)
+static int bq27541_battery_remove(struct i2c_client *client)
 {
-	struct bq27541_device_info *bq27541_device;
-	int i=0;
-	bq27541_device = i2c_get_clientdata(client);
-	for (i = 0; i < ARRAY_SIZE(bq27541_supply); i++) {
-		power_supply_unregister(&bq27541_supply[i]);
-	}
-	if (bq27541_device) {
-		wake_lock_destroy(&bq27541_device->low_battery_wake_lock);
-		wake_lock_destroy(&bq27541_device->cable_wake_lock);
-		kfree(bq27541_device);
-		bq27541_device = NULL;
-	}
+	struct bq27541_device_info *di = i2c_get_clientdata(client);
+
+	cancel_delayed_work(&di->battery_polling_delay_work);
+
+	power_supply_unregister(&di->bat);
+	power_supply_unregister(&di->ac);
+	power_supply_unregister(&di->usb);
+
+	mutex_lock(&battery_mutex);
+	idr_remove(&battery_id, di->id);
+	mutex_unlock(&battery_mutex);
+
+	kfree(di);
+
 	return 0;
 }
 
-static int bq27541_suspend(struct device *dev)
+#if defined (CONFIG_PM)
+static int bq27541_battery_suspend(struct i2c_client *client,
+	pm_message_t state)
 {
-	cancel_delayed_work_sync(&bq27541_device->status_poll_work);
-	flush_workqueue(battery_work_queue);
+	struct bq27541_device_info *di = i2c_get_clientdata(client);
+	cancel_delayed_work(&di->battery_polling_delay_work);
 
 	return 0;
 }
 
-/* any smbus transaction will wake up pad */
-static int bq27541_resume(struct device *dev)
+static int bq27541_battery_resume(struct i2c_client *client)
 {
-	cancel_delayed_work(&bq27541_device->status_poll_work);
-	queue_delayed_work(battery_work_queue, &bq27541_device->status_poll_work, 5 * HZ);
+	struct bq27541_device_info *di = i2c_get_clientdata(client);
+	//power_supply_changed(&bq27541_device->bat);
+	schedule_delayed_work(&di->battery_polling_delay_work, 10*HZ);
 
 	return 0;
 }
+#endif
 
-static int bq27541_shutdown(struct device *dev)
-{
-	bq27541_device->shutdown_disable = 0;
-
-	return 0;
-}
+/*
+ * Module stuff
+ */
 
 static const struct i2c_device_id bq27541_id[] = {
-	{ "bq27541", 0 },
+	{ "bq27541", BQ27541 },
 	{},
 };
 
-static const struct dev_pm_ops bq27541_pm_ops = {
-	.suspend	= bq27541_suspend,
-	.resume		= bq27541_resume,
-	.poweroff	= bq27541_shutdown,
+static struct i2c_driver bq27541_battery_driver = {
+	.driver = {
+		.name = "bq27541-battery",
+	},
+	.probe = bq27541_battery_probe,
+	.remove = bq27541_battery_remove,
+#if defined (CONFIG_PM)
+	.suspend = bq27541_battery_suspend,
+	.resume = bq27541_battery_resume,
+#endif
+	.id_table = bq27541_id,
 };
 
-static struct i2c_driver bq27541_battery_driver = {
-	.probe		= bq27541_probe,
-	.remove 	= bq27541_remove,
-	.id_table	= bq27541_id,
-	.driver = {
-		.name	= "bq27541-battery",
-#ifdef CONFIG_PM
-		.pm		= &bq27541_pm_ops,
-#endif
-	},
-};
 static int __init bq27541_battery_init(void)
 {
 	int ret;
 
 	ret = i2c_add_driver(&bq27541_battery_driver);
 	if (ret)
-		dev_err(&bq27541_device->client->dev,
-			"%s: i2c_add_driver failed\n", __func__);
+		printk(KERN_ERR "Unable to register BQ27541 driver\n");
 
 	return ret;
 }
@@ -984,6 +923,6 @@ static void __exit bq27541_battery_exit(void)
 }
 module_exit(bq27541_battery_exit);
 
-MODULE_AUTHOR("NVIDIA Corporation");
-MODULE_DESCRIPTION("bq27541 battery monitor driver");
+MODULE_AUTHOR("Rodolfo Giometti <giometti@linux.it>");
+MODULE_DESCRIPTION("BQ27541 battery monitor driver");
 MODULE_LICENSE("GPL");
