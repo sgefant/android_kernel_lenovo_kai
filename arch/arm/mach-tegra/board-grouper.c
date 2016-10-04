@@ -39,6 +39,7 @@
 #include <linux/skbuff.h>
 #include <linux/regulator/consumer.h>
 #include <linux/power/smb347-charger.h>
+#include <linux/power/gpio-charger.h>
 #include <linux/rfkill-gpio.h>
 
 #include <asm/hardware/gic.h>
@@ -224,6 +225,20 @@ static char *grouper_battery[] = {
 	"battery",
 };
 
+static struct gpio_charger_platform_data dock_charger_pdata = {
+	.name				= "grouper-dock-charger",
+	.type				= POWER_SUPPLY_TYPE_USB_ACA,
+	.gpio				= TEGRA_GPIO_PU4,
+	.gpio_active_low	= 1,
+	.supplied_to		= grouper_battery,
+	.num_supplicants	= ARRAY_SIZE(grouper_battery),
+};
+
+static struct platform_device dock_device = {
+	.name	= "grouper-dock",
+	.id		= -1,
+};
+
 static struct smb347_charger_platform_data smb347_charger_pdata = {
 	.battery_info = {
 		.name		= "ME370",
@@ -241,7 +256,7 @@ static struct smb347_charger_platform_data smb347_charger_pdata = {
 	.suspend_on_hard_temp_limit = true,
 	.use_mains		= true,
 	.use_usb		= true,
-	.use_usb_otg		= true,
+	.use_usb_otg		= false,
 	.irq_gpio		= TEGRA_GPIO_PV1,
 	.enable_control		= SMB347_CHG_ENABLE_SW,
 	.usb_mode_pin_ctrl	= true,
@@ -616,6 +631,32 @@ void grouper_hsic_platform_open(void)
 	udelay(1000);
 }
 
+static void grouper_otg_power(int enable)
+{
+	struct power_supply *smb_usb = power_supply_get_by_name("smb347-usb");
+	union power_supply_propval usb_otg = { enable };
+
+	pr_debug("%s: %d\n", __func__, enable);
+
+	if (smb_usb && smb_usb->set_property)
+		smb_usb->set_property(
+			smb_usb,
+			POWER_SUPPLY_PROP_USB_OTG,
+			&usb_otg);
+	else
+		pr_err("%s: couldn't get power supply\n", __func__);
+}
+
+void grouper_usb_ehci1_phy_on(void)
+{
+	grouper_otg_power(1);
+}
+
+void grouper_usb_echi1_phy_off(void)
+{
+	grouper_otg_power(0);
+}
+
 static struct tegra_usb_phy_platform_ops uhsic_pdata_ops = {
 	.open = &grouper_hsic_platform_open,
 	.pre_phy_on = &grouper_usb_hsic_phy_on,
@@ -624,6 +665,11 @@ static struct tegra_usb_phy_platform_ops uhsic_pdata_ops = {
 	.post_resume = &grouper_usb_hsic_post_resume,
 	.port_power = &grouper_usb_hsic_phy_ready,
 	.post_phy_off = &grouper_usb_hsic_phy_off,
+};
+
+static struct tegra_usb_phy_platform_ops ehci1_pdata_ops = {
+	.pre_phy_on = &grouper_usb_ehci1_phy_on,
+	.post_phy_off = &grouper_usb_echi1_phy_off,
 };
 
 static struct tegra_usb_platform_data tegra_ehci_uhsic_pdata = {
@@ -686,6 +732,7 @@ static struct tegra_usb_platform_data tegra_ehci1_utmi_pdata = {
 		.xcvr_setup_offset = 0,
 		.xcvr_use_fuses = 1,
 	},
+	.ops = &ehci1_pdata_ops,
 };
 
 static struct tegra_usb_otg_data tegra_otg_pdata = {
@@ -815,6 +862,17 @@ static void grouper_usb_init(void) { }
 static void grouper_modem_init(void) { }
 #endif
 
+static void grouper_dock_charger_init(void)
+{
+	pr_info("%s\n", __func__);
+	if (grouper_get_project_id() == GROUPER_PROJECT_NAKASI_3G)
+		dock_charger_pdata.gpio = TEGRA_GPIO_PO5;
+	else
+		dock_charger_pdata.gpio = TEGRA_GPIO_PU4;
+	dock_device.dev.platform_data = &dock_charger_pdata;
+	platform_device_register(&dock_device);
+}
+
 static void grouper_audio_init(void)
 {
 	pr_info("%s\n", __func__);
@@ -860,6 +918,7 @@ static void __init tegra_grouper_init(void)
 	grouper_uart_init();
 	grouper_audio_init();
 	platform_add_devices(grouper_devices, ARRAY_SIZE(grouper_devices));
+	grouper_dock_charger_init();
 	tegra_ram_console_debug_init();
 	grouper_sdhci_init();
 	grouper_regulator_init();
