@@ -101,7 +101,7 @@ static const u8 tegra_udc_test_packet[53] = {
 
 static struct tegra_udc *the_udc;
 
-#if defined(CONFIG_TEGRA_GADGET_BOOST_CPU_FREQ) && !defined(CONFIG_MACH_KAI)
+#ifdef CONFIG_TEGRA_GADGET_BOOST_CPU_FREQ
 	static struct pm_qos_request boost_cpu_freq_req;
 	static u32 ep_queue_request_count;
 	static u8 boost_cpufreq_work_flag, set_cpufreq_normal_flag;
@@ -213,8 +213,7 @@ static void done(struct tegra_ep *ep, struct tegra_req *req, int status)
 			req->req.actual, req->req.length);
 
 	ep->stopped = 1;
-
-#if defined(CONFIG_TEGRA_GADGET_BOOST_CPU_FREQ) && !defined(CONFIG_MACH_KAI)
+#ifdef CONFIG_TEGRA_GADGET_BOOST_CPU_FREQ
 	if (req->req.complete && req->req.length >= BOOST_TRIGGER_SIZE)
 		ep_queue_request_count--;
 #endif
@@ -955,7 +954,7 @@ tegra_ep_queue(struct usb_ep *_ep, struct usb_request *_req, gfp_t gfp_flags)
 		}
 	}
 
-#if defined(CONFIG_TEGRA_GADGET_BOOST_CPU_FREQ) && !defined(CONFIG_MACH_KAI)
+#ifdef CONFIG_TEGRA_GADGET_BOOST_CPU_FREQ
 	if (req->req.length >= BOOST_TRIGGER_SIZE) {
 		ep_queue_request_count++;
 		schedule_work(&udc->boost_cpufreq_work);
@@ -2321,7 +2320,7 @@ static void tegra_udc_set_current_limit_work(struct work_struct *work)
 	tegra_usb_set_charging_current(udc);
 }
 
-#if defined(CONFIG_TEGRA_GADGET_BOOST_CPU_FREQ) && !defined(CONFIG_MACH_KAI)
+#ifdef CONFIG_TEGRA_GADGET_BOOST_CPU_FREQ
 void tegra_udc_set_cpu_freq_normal(unsigned long data)
 {
 	set_cpufreq_normal_flag = 1;
@@ -2874,7 +2873,7 @@ static int __init tegra_udc_probe(struct platform_device *pdev)
 	err = usb_add_gadget_udc(&pdev->dev, &udc->gadget);
 	if (err)
 		goto err_del_udc;
-#if defined(CONFIG_TEGRA_GADGET_BOOST_CPU_FREQ) && !defined(CONFIG_MACH_KAI)
+#ifdef CONFIG_TEGRA_GADGET_BOOST_CPU_FREQ
 	boost_cpufreq_work_flag = 1;
 	ep_queue_request_count = 0;
 	INIT_WORK(&udc->boost_cpufreq_work,
@@ -2990,7 +2989,7 @@ static int __exit tegra_udc_remove(struct platform_device *pdev)
 
 	cancel_delayed_work(&udc->non_std_charger_work);
 	cancel_work_sync(&udc->irq_work);
-#if defined(CONFIG_TEGRA_GADGET_BOOST_CPU_FREQ) && !defined(CONFIG_MACH_KAI)
+#ifdef CONFIG_TEGRA_GADGET_BOOST_CPU_FREQ
 	cancel_work_sync(&udc->boost_cpufreq_work);
 	del_timer(&boost_timer);
 #endif
