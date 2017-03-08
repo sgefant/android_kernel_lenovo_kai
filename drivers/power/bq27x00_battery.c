@@ -39,6 +39,10 @@
 
 #include <linux/power/bq27x00_battery.h>
 
+#ifdef CONFIG_CHARGER_SMB349
+#include <linux/smb349-charger.h>
+#endif
+
 #define DRIVER_VERSION			"1.2.0"
 
 #define BQ27x00_MANUFACTURER	"Texas Instruments"
@@ -128,6 +132,14 @@ struct bq27x00_device_info {
 
 	struct mutex lock;
 	struct mutex update_lock;
+
+#ifdef CONFIG_CHARGER_SMB349
+	int ac_online;
+	int usb_online;
+	int battery_online;
+	int status;
+	int lifesoc;
+#endif
 };
 
 static enum power_supply_property bq27x00_battery_props[] = {
@@ -827,6 +839,40 @@ static int bq27x00_ctrl_read_i2c(struct bq27x00_device_info *di,
 	return ret;
 }
 
+#ifdef CONFIG_CHARGER_SMB349
+static void bq27541_charger_status(enum charging_states status, enum charger_type chrg_type, void *data)
+{
+        struct bq27x00_device_info *di = (struct bq27x00_device_info *)data;
+
+        mutex_lock(&battery_mutex);
+        di->ac_online = 0;
+        di->usb_online = 0;
+        di->battery_online = 0;
+        if (chrg_type == AC)
+                di->ac_online = 1;
+        else if (chrg_type == USB)
+                di->usb_online = 1;
+        else
+                di->battery_online = 1;
+
+        if (status == progress)
+                di->status = POWER_SUPPLY_STATUS_CHARGING;
+        else if (status == completed)
+                di->status = POWER_SUPPLY_STATUS_FULL;
+        else if (status >= stopped)
+                di->status = POWER_SUPPLY_STATUS_NOT_CHARGING;
+        else
+        {
+                if((chrg_type >= AC) && (di->lifesoc >= 100))
+                        di->status = POWER_SUPPLY_STATUS_FULL;
+                else
+                        di->status = POWER_SUPPLY_STATUS_DISCHARGING;
+        }
+        mutex_unlock(&battery_mutex);
+        power_supply_changed(&di->bat);
+}
+#endif
+
 static int bq27x00_battery_probe(struct i2c_client *client,
 				 const struct i2c_device_id *id)
 {
@@ -879,12 +925,18 @@ static int bq27x00_battery_probe(struct i2c_client *client,
 
 	read_data = bq27x00_read(di, BQ27x00_REG_FLAGS, false);
 
-	
+
 	if (read_data < 0) {
 		dev_err(&client->dev, "no battery present\n");
 		retval = -ENODEV;
 		goto batt_failed_3;
 	}
+
+#ifdef CONFIG_CHARGER_SMB349
+	retval = register_callback(bq27541_charger_status, di);
+        if (retval < 0)
+                dev_info(&client->dev, "register smb349 callback error\n");
+#endif
 
 	retval = bq27x00_powersupply_init(di);
 	if (retval < 0)
